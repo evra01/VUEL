@@ -1,0 +1,31 @@
+name: vuel_mobile
+description: Module de détection device, permissions overlay et tutoriel par marque pour Vuel
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  device_info_plus: ^10.1.0
+  permission_handler: ^11.3.0
+  android_intent_plus: ^5.1.0
+  http: ^1.2.1
+  package_info_plus: ^8.0.0
+  socket_io_client: ^2.0.3+1
+  url_launcher: ^6.3.0
+  shared_preferences: ^2.2.2
+  share_plus: ^10.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logos/

@@ -1,0 +1,62 @@
+name: Mobile CI (Android)
+
+on:
+  push:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+  pull_request:
+    paths:
+      - 'mobile/**'
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Java (requis pour Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Bootstrap du projet (flutter create + superposition du code Vuel)
+        run: |
+          chmod +x mobile/scripts/bootstrap.sh
+          ./mobile/scripts/bootstrap.sh
+
+      - name: Analyse statique
+        working-directory: mobile/app
+        run: flutter analyze || true
+
+      - name: Build APK debug
+        working-directory: mobile/app
+        run: flutter build apk --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vuel-debug-apk
+          path: mobile/app/build/app/outputs/flutter-apk/app-debug.apk
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Bootstrap du projet (flutter create + superposition du code Vuel)
+        run: |
+          chmod +x mobile/scripts/bootstrap.sh
+          ./mobile/scripts/bootstrap.sh
+
+      - name: Build iOS (sans signature)
+        working-directory: mobile/app
+        run: flutter build ios --release --no-codesign

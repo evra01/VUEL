@@ -1,0 +1,156 @@
+### Variables — modifie ici si besoin
+@baseUrl = http://localhost:3000
+@phone = +2250700000001
+@password = motdepasse123
+@pseudo = testeur_vuel
+
+### ------------------------------------------------------------------
+### AUTH
+### ------------------------------------------------------------------
+
+### 1. Inscription — envoie l'OTP. Si Twilio n'est PAS configuré (cas par défaut en
+###    local), le code s'affiche simplement dans le terminal où tourne le back-end
+###    (cherche la ligne "[SMS non configuré...]") — pas besoin de compte Twilio pour tester.
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "pseudo": "{{pseudo}}",
+  "password": "{{password}}"
+}
+
+### 2. Vérification OTP — remplace "000000" par le code reçu par SMS,
+###    puis exécute cette requête pour créer le compte et récupérer les tokens
+# @name verifyOtp
+POST {{baseUrl}}/auth/verify-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "code": "000000"
+}
+
+### 3. Login (si le compte existe déjà)
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "password": "{{password}}"
+}
+
+### Récupère le token de la réponse précédente pour les requêtes suivantes.
+### Avec REST Client, tu peux référencer {{login.response.body.$.accessToken}}
+### directement si tu as exécuté "login" juste avant. Sinon, colle-le à la main
+### dans @token ci-dessous.
+@token = COLLE_LE_TOKEN_ICI
+
+### ------------------------------------------------------------------
+### USERS
+### ------------------------------------------------------------------
+
+### Profil courant
+GET {{baseUrl}}/users/me
+Authorization: Bearer {{token}}
+
+### Ajouter un ID de jeu
+POST {{baseUrl}}/users/me/gaming-ids
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "game": "EFOOTBALL",
+  "gamePseudo": "MonPseudoEFootball"
+}
+
+### Choisir une icône d'avatar (pas de photo, cf. AVATAR_ICON_IDS)
+PATCH {{baseUrl}}/users/me/avatar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "avatarId": "trophy"
+}
+
+### ------------------------------------------------------------------
+### WALLET
+### ------------------------------------------------------------------
+
+### Solde
+GET {{baseUrl}}/wallet
+Authorization: Bearer {{token}}
+
+### Déposer via Wave (nécessite Wave configuré, cf. section ADMIN) — renvoie paymentUrl
+POST {{baseUrl}}/wallet/deposit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": 5000
+}
+
+### ------------------------------------------------------------------
+### TOURNOIS
+### ------------------------------------------------------------------
+
+### Liste des tournois ouverts
+GET {{baseUrl}}/tournaments
+
+### Créer un tournoi (mise minimum 200 F)
+# @name createTournament
+POST {{baseUrl}}/tournaments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Tournoi Test",
+  "game": "EFOOTBALL",
+  "stakeAmount": 200,
+  "maxParticipants": 8
+}
+
+### ------------------------------------------------------------------
+### ADMIN — nécessite un compte ADMIN (cf. Backend : créer le premier compte admin,
+### puis re-login avec ce compte pour obtenir un token admin ci-dessus)
+### ------------------------------------------------------------------
+
+@adminToken = COLLE_LE_TOKEN_ADMIN_ICI
+
+### Configurer Wave (paiement par lien)
+PATCH {{baseUrl}}/admin/payment-config
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "waveApiKey": "TA_CLE_WAVE",
+  "webhookSharedSecret": "un-secret-fort-a-toi"
+}
+
+### Voir la config Wave (masquée)
+GET {{baseUrl}}/admin/payment-config
+Authorization: Bearer {{adminToken}}
+
+### Configurer Twilio (OTP SMS)
+PATCH {{baseUrl}}/admin/sms-config
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "twilioAccountSid": "TON_ACCOUNT_SID",
+  "twilioAuthToken": "TON_AUTH_TOKEN",
+  "twilioFromNumber": "+15550001234"
+}
+
+### Voir la config SMS (masquée)
+GET {{baseUrl}}/admin/sms-config
+Authorization: Bearer {{adminToken}}
+
+### Stats back-office
+GET {{baseUrl}}/admin/stats
+Authorization: Bearer {{adminToken}}
+
+### Liste des utilisateurs
+GET {{baseUrl}}/admin/users
+Authorization: Bearer {{adminToken}}
