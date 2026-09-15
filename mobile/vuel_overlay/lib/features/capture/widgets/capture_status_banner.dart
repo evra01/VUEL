@@ -16,7 +16,21 @@ class CaptureStatusBanner extends StatelessWidget {
       CaptureStatus.screenshotDetected => ('Capture détectée — envoyer ce score ?', Icons.image, Colors.orange),
       CaptureStatus.uploading => ('Envoi de la preuve…', Icons.upload, Colors.blue),
       CaptureStatus.uploaded => ('Preuve envoyée ✓', Icons.check_circle, Colors.green),
-      CaptureStatus.failed => ('Échec de l\'envoi — réessaie', Icons.error, Colors.red),
+      // Distinct de uploadFailed : ici la capture d'écran elle-même n'a pas
+      // abouti (permission MediaProjection perdue, timeout du frame...) —
+      // rien n'a encore été envoyé au serveur, inutile de parler d'"envoi".
+      // Sur Android 14+, la cause la plus fréquente est le choix "Une seule
+      // application" fait dans la boîte de dialogue système de capture
+      // d'écran (au lieu de "Écran entier") — voir l'avertissement affiché
+      // dans duel_room_screen._startCapture avant l'ouverture de ce dialog.
+      // On le rappelle ici pour l'utilisateur qui relance une capture après
+      // un premier échec sans forcément se souvenir de cet avertissement.
+      CaptureStatus.captureFailed =>
+        ('Échec de la capture — réessaie (choisis "Écran entier" si on te redemande la permission)',
+            Icons.camera_alt, Colors.red),
+      CaptureStatus.uploadFailed => ('Échec de l\'envoi — réessaie', Icons.error, Colors.red),
+      CaptureStatus.staleScreenshotRejected =>
+        ('Capture trop ancienne — reprends une capture fraîche du score', Icons.warning, Colors.orange),
       CaptureStatus.idle => ('', Icons.info, Colors.grey),
     };
 

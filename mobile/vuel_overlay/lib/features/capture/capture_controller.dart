@@ -3,7 +3,25 @@ import 'dart:io';
 import 'bubble_capture_channel.dart';
 import 'ios_screenshot_channel.dart';
 
-enum CaptureStatus { idle, capturing, uploading, uploaded, failed, screenshotDetected }
+// BUG CORRIGÉ ICI (symptôme signalé : le toast Android natif affiche
+// correctement "Échec de la capture" quand la capture d'écran elle-même
+// échoue, mais le bandeau Flutter affichait TOUJOURS "Échec de l'envoi" —
+// y compris quand la capture n'avait même pas réussi à partir. Cause :
+// _mapStatus ci-dessous renvoyait le même CaptureStatus.failed générique
+// pour 'capture_failed' ET 'upload_failed' (et 'stale_screenshot_rejected'
+// côté iOS), donc le texte affiché dans capture_status_banner.dart ne
+// correspondait plus à la vraie cause de l'échec. Fix : un statut distinct
+// par cause, avec un message adapté à chacune côté banner.
+enum CaptureStatus {
+  idle,
+  capturing,
+  uploading,
+  uploaded,
+  captureFailed,
+  uploadFailed,
+  staleScreenshotRejected,
+  screenshotDetected,
+}
 
 /// Point d'entrée unique pour l'écran de duel : démarre le bon mécanisme de
 /// capture selon la plateforme dès que le duel passe en IN_PROGRESS, l'arrête
@@ -56,8 +74,18 @@ class CaptureController {
         return CaptureStatus.uploading;
       case 'uploaded':
         return CaptureStatus.uploaded;
+      case 'capture_failed':
+        return CaptureStatus.captureFailed;
+      case 'upload_failed':
+        return CaptureStatus.uploadFailed;
+      case 'stale_screenshot_rejected':
+        return CaptureStatus.staleScreenshotRejected;
       default:
-        return CaptureStatus.failed;
+        // Événement natif inconnu — on suppose le cas le plus courant plutôt
+        // que de planter, mais ça ne devrait jamais arriver en pratique (cf.
+        // les events listés dans bubble_capture_channel.dart /
+        // ios_screenshot_channel.dart).
+        return CaptureStatus.uploadFailed;
     }
   }
 }

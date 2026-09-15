@@ -86,7 +86,10 @@
   th, td { text-align: left; padding: 12px 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
   tr:last-child td { border-bottom: none; }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--surface-2); }
+  .badge.amber { background: var(--amber-dim); color: var(--amber); }
+  .badge.green { background: rgba(93,202,165,0.15); color: var(--green); }
+  .badge.red { background: rgba(225,75,60,0.15); color: var(--red); }
   select.role-select { width: auto; padding: 6px 8px; font-size: 12px; }
 
   .card { background: var(--surface); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
@@ -556,7 +559,11 @@ async function rejectDeposit(id) {
   }
 }
 
-const WITHDRAWAL_STATUS_LABEL = { PENDING: 'En attente', SUCCESS: 'Payé', FAILED: 'Refusé' };
+// 4 statuts possibles pour un retrait (cf. withdrawal-status.util.ts côté
+// back-end — /admin/withdrawals/statuses renvoie ce même mapping, dupliqué
+// ici en dur pour un rendu instantané sans appel réseau supplémentaire).
+const WITHDRAWAL_STATUS_LABEL = { PENDING: 'En cours', SUCCESS: 'Effectué', CANCELLED: 'Annulé', OTHER: 'Autre' };
+const WITHDRAWAL_STATUS_CLASS = { PENDING: 'amber', SUCCESS: 'green', CANCELLED: 'red', OTHER: '' };
 
 async function loadWithdrawals() {
   const list = document.getElementById('withdrawalsList');
@@ -573,12 +580,14 @@ async function loadWithdrawals() {
             <div class="title">${w.wallet.user.pseudo} — ${w.amount} F</div>
             <div class="meta">Téléphone : ${w.wallet.user.phone} · Moyen : ${w.provider || '—'}</div>
             <div class="meta">Demandé le ${new Date(w.createdAt).toLocaleString('fr-FR')}</div>
-            <div class="meta">Statut : ${WITHDRAWAL_STATUS_LABEL[w.status] || w.status}</div>
+            <div class="meta">Statut : <span class="badge ${WITHDRAWAL_STATUS_CLASS[w.status] || ''}">${WITHDRAWAL_STATUS_LABEL[w.status] || w.status}</span></div>
+            ${w.adminNote ? `<div class="meta">Note : ${w.adminNote}</div>` : ''}
           </div>
           ${w.status === 'PENDING' ? `
-            <div style="display:flex; gap:8px;">
-              <button class="small amber" onclick="approveWithdrawal('${w.id}')">✓ Approuver (payé)</button>
-              <button class="small" onclick="rejectWithdrawal('${w.id}')">✕ Refuser (recréditer)</button>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="small amber" onclick="approveWithdrawal('${w.id}')">✓ Effectué</button>
+              <button class="small" onclick="rejectWithdrawal('${w.id}')">✕ Annulé (recréditer)</button>
+              <button class="small" onclick="markWithdrawalOther('${w.id}')">… Autre</button>
             </div>
           ` : ''}
         </div>
@@ -592,7 +601,7 @@ async function loadWithdrawals() {
 async function approveWithdrawal(id) {
   try {
     await api('/admin/withdrawals/' + id + '/approve', { method: 'POST' });
-    showToast('Retrait marqué comme payé', 'success');
+    showToast('Retrait marqué "Effectué"', 'success');
     loadWithdrawals();
   } catch (e) {
     showToast(e.message, 'error');
@@ -600,10 +609,24 @@ async function approveWithdrawal(id) {
 }
 
 async function rejectWithdrawal(id) {
-  if (!confirm('Refuser ce retrait et recréditer le joueur ?')) return;
+  if (!confirm('Marquer ce retrait "Annulé" et recréditer le joueur ?')) return;
   try {
     await api('/admin/withdrawals/' + id + '/reject', { method: 'POST' });
-    showToast('Retrait refusé, joueur recrédité', 'success');
+    showToast('Retrait annulé, joueur recrédité', 'success');
+    loadWithdrawals();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// Statut "Autre" : ne recrédite PAS automatiquement le solde (cas particulier
+// laissé à l'appréciation de l'admin — utiliser l'ajustement de solde à part
+// si un recrédit est nécessaire).
+async function markWithdrawalOther(id) {
+  const note = prompt('Marquer ce retrait "Autre" — précise pourquoi (optionnel) :') || '';
+  try {
+    await api('/admin/withdrawals/' + id + '/other', { method: 'POST', body: JSON.stringify({ note }) });
+    showToast('Retrait marqué "Autre"', 'success');
     loadWithdrawals();
   } catch (e) {
     showToast(e.message, 'error');

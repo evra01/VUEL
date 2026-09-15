@@ -119,6 +119,7 @@ class _PlayTabState extends State<PlayTab> {
       );
       if (mounted) {
         final createdId = created['id'] as String?;
+        final createdJoinCode = created['joinCode'] as String?;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: const Text('Duel créé — en attente d\'un adversaire'),
           action: createdId != null
@@ -128,6 +129,7 @@ class _PlayTabState extends State<PlayTab> {
                     context: context,
                     baseUrl: widget.baseUrl,
                     duelId: createdId,
+                    joinCode: createdJoinCode,
                     game: _selectedGame,
                     stakeAmount: stake,
                   ),
@@ -147,11 +149,12 @@ class _PlayTabState extends State<PlayTab> {
     }
   }
 
-  void _openDuel(String duelId) {
+  void _openDuel(String duelId, {String? joinCode}) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => DuelRoomScreen(
           duelId: duelId,
+          joinCode: joinCode,
           baseUrl: widget.baseUrl,
           accessToken: widget.accessToken,
           currentUserId: _currentUserId ?? '',
@@ -216,7 +219,7 @@ class _PlayTabState extends State<PlayTab> {
 
     try {
       await widget.duelsClient.join(duelId, playerBTeam: team);
-      _openDuel(duelId);
+      _openDuel(duelId, joinCode: duel['joinCode'] as String?);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -225,7 +228,7 @@ class _PlayTabState extends State<PlayTab> {
     }
   }
 
-  // Point d'entrée pour un ami qui a reçu un lien d'invitation /d/:id (cf.
+  // Point d'entrée pour un ami qui a reçu un lien d'invitation /d/:code (cf.
   // DuelInviteController côté back-end) mais qui n'a pas pu (ou voulu)
   // laisser le deep-link `vuel://` ouvrir l'app directement — il colle
   // simplement l'identifiant du salon affiché sur la page d'invitation.
@@ -240,7 +243,7 @@ class _PlayTabState extends State<PlayTab> {
           autofocus: true,
           decoration: const InputDecoration(
             labelText: 'Code du salon',
-            hintText: 'Collé depuis le lien d\'invitation reçu',
+            hintText: 'Ex: K7QX2M (reçu par lien ou message)',
           ),
         ),
         actions: [
@@ -460,12 +463,13 @@ class _PlayTabState extends State<PlayTab> {
           ..._duels.map((duel) => _DuelCard(
                 duel: duel,
                 mine: duel['playerAId'] == _currentUserId,
-                onTap: () => _openDuel(duel['id'] as String),
+                onTap: () => _openDuel(duel['id'] as String, joinCode: duel['joinCode'] as String?),
                 onJoin: () => _joinDuel(duel as Map<String, dynamic>),
                 onShare: () => shareDuelInvite(
                   context: context,
                   baseUrl: widget.baseUrl,
                   duelId: duel['id'] as String,
+                  joinCode: duel['joinCode'] as String?,
                   game: duel['game'] as String?,
                   stakeAmount: duel['stakeAmount'] as int?,
                 ),

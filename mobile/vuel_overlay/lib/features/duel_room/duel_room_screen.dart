@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'duel_room_socket_service.dart';
@@ -14,6 +15,10 @@ import '../../core/share/duel_share.dart';
 
 class DuelRoomScreen extends StatefulWidget {
   final String duelId;
+  /// Code court du salon (cf. DuelsService.generateJoinCode) utilisé pour le
+  /// partage — null pour un salon créé avant l'ajout de ce champ, auquel cas
+  /// shareDuelInvite se rabat sur duelId (cf. duel_share.dart).
+  final String? joinCode;
   final String baseUrl;
   final String accessToken;
   final String currentUserId;
@@ -25,6 +30,7 @@ class DuelRoomScreen extends StatefulWidget {
   const DuelRoomScreen({
     super.key,
     required this.duelId,
+    this.joinCode,
     required this.baseUrl,
     required this.accessToken,
     required this.currentUserId,
@@ -144,6 +150,36 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
   }
 
   Future<void> _startCapture() async {
+    // Depuis Android 14+, la boîte de dialogue système de capture d'écran
+    // (MediaProjection) propose "Écran entier" OU "Une seule application".
+    // Si l'utilisateur choisit "Une seule application" — ou si le système la
+    // pré-sélectionne — la capture ne verra JAMAIS le jeu (eFootball/CODM)
+    // affiché derrière la bulle, puisque seule l'app sélectionnée est
+    // projetée : chaque capture échoue en timeout côté OverlayBubbleService
+    // (aucun frame reçu), sans que rien côté code ne puisse forcer ce choix
+    // à la place de l'utilisateur — c'est une décision système. On prévient
+    // donc explicitement AVANT que la boîte de dialogue système ne s'ouvre.
+    if (Platform.isAndroid && mounted) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Important avant de continuer'),
+          content: const Text(
+            'Le prochain écran va te demander d\'autoriser la capture. '
+            'Choisis bien "Écran entier" (pas "Cette application") — sinon '
+            'la capture de ton score échouera à chaque fois.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Compris, continuer'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
     _captureSub = _captureController.status.listen((s) => setState(() => _captureStatus = s));
     try {
       final ok = await _captureController.start(
@@ -207,6 +243,7 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
                 context: context,
                 baseUrl: widget.baseUrl,
                 duelId: widget.duelId,
+                joinCode: widget.joinCode,
               ),
             ),
         ],

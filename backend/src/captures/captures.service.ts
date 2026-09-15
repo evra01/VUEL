@@ -31,17 +31,25 @@ export class CapturesService {
       `Pour trancher manuellement, répondre à ce message avec :\n` +
       `/gagnant <nom de l'équipe gagnante>`;
 
-    const telegramMessageId = await this.telegram.sendCapturePhoto(fileBuffer, caption);
-    if (telegramMessageId === null) {
+    const result = await this.telegram.sendCapturePhoto(fileBuffer, caption);
+    if (!result.ok) {
       // Pas de copie de la capture nulle part ailleurs (voir plus haut) : si
       // Telegram est injoignable ou mal configuré, la preuve est purement et
       // simplement perdue. Mieux vaut le dire clairement au joueur tout de
-      // suite (message précis, cf. demande sur les erreurs claires) que de
-      // faire croire que "ça a marché" alors que rien n'a pu être analysé.
-      throw new ServiceUnavailableException(
-        "Impossible d'envoyer la preuve — le canal de vérification (Telegram) est indisponible. Réessaie dans quelques instants.",
-      );
+      // suite (message précis selon la cause, distingué côté
+      // TelegramNotifierService) que de faire croire que "ça a marché" alors
+      // que rien n'a pu être analysé.
+      const messages: Record<typeof result.reason, string> = {
+        not_configured:
+          "Impossible d'envoyer la preuve — le canal de vérification (Telegram) n'est pas configuré côté serveur. Préviens un admin.",
+        telegram_error:
+          "Impossible d'envoyer la preuve — Telegram a refusé l'envoi (bot/canal mal configuré). Préviens un admin.",
+        network_error:
+          "Impossible d'envoyer la preuve — le canal de vérification (Telegram) est indisponible. Réessaie dans quelques instants.",
+      };
+      throw new ServiceUnavailableException(messages[result.reason]);
     }
+    const telegramMessageId = result.messageId;
 
     const proof = await this.prisma.screenshotProof.create({
       data: { duelId, userId, telegramMessageId },

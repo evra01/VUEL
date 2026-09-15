@@ -15,18 +15,19 @@ import { DuelsService } from './duels.service';
 export class DuelInviteController {
   constructor(private duelsService: DuelsService) {}
 
-  @Get(':id')
-  async invite(@Param('id') id: string, @Res() res: Response) {
-    let preview: { game: string; mode: string; stakeAmount: number; status: string; creatorPseudo: string } | null =
-      null;
+  @Get(':code')
+  async invite(@Param('code') code: string, @Res() res: Response) {
+    let preview:
+      | { id: string; joinCode: string | null; game: string; mode: string; stakeAmount: number; status: string; creatorPseudo: string }
+      | null = null;
     try {
-      preview = await this.duelsService.getPublicPreview(id);
+      preview = await this.duelsService.getPublicPreview(code);
     } catch {
       preview = null;
     }
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(renderInvitePage(id, preview));
+    res.send(renderInvitePage(code, preview));
   }
 }
 
@@ -45,11 +46,15 @@ function escapeHtml(value: string): string {
 }
 
 function renderInvitePage(
-  duelId: string,
-  preview: { game: string; mode: string; stakeAmount: number; status: string; creatorPseudo: string } | null,
+  requestedCode: string,
+  preview: { id: string; joinCode: string | null; game: string; mode: string; stakeAmount: number; status: string; creatorPseudo: string } | null,
 ): string {
-  const safeId = escapeHtml(duelId);
-  const deepLink = `vuel://duel/${safeId}`;
+  // Toujours afficher/partager le code court du salon (joinCode) plutôt que
+  // l'UUID technique — même pour un lien ouvert via l'ancien format /d/:id
+  // (repli sur requestedCode si le duel n'a pas encore de joinCode, cf.
+  // migration des duels créés avant son ajout).
+  const displayCode = escapeHtml(preview?.joinCode ?? requestedCode);
+  const deepLink = `vuel://duel/${displayCode}`;
 
   const body = preview
     ? `
@@ -76,7 +81,7 @@ function renderInvitePage(
   .warn { color: #f87171; font-size: 13px; }
   .code-box { margin-top: 20px; background: #0f1115; border: 1px dashed #3f3f46; border-radius: 10px; padding: 12px; }
   .code-label { font-size: 11px; color: #a1a1aa; margin: 0 0 6px; }
-  .code { font-size: 15px; word-break: break-all; font-family: monospace; color: #fbbf24; }
+  .code { font-size: 22px; letter-spacing: 3px; font-family: monospace; color: #fbbf24; }
   .btn { display: block; margin-top: 20px; background: #fbbf24; color: #1c1206; text-decoration: none; font-weight: 700; padding: 12px; border-radius: 10px; }
   .hint { font-size: 12px; color: #a1a1aa; margin-top: 14px; line-height: 1.5; }
 </style>
@@ -87,7 +92,7 @@ function renderInvitePage(
     <a class="btn" href="${deepLink}">Ouvrir dans l'app Vuel</a>
     <div class="code-box">
       <p class="code-label">App pas installée, ou le lien ne s'ouvre pas tout seul ?<br/>Dans Vuel, va dans "Jouer" → "Rejoindre avec un code" et colle :</p>
-      <p class="code">${safeId}</p>
+      <p class="code">${displayCode}</p>
     </div>
     <p class="hint">Vuel est un jeu d'argent entre amis — rejoins uniquement les salons de personnes que tu connais.</p>
   </div>

@@ -4,7 +4,8 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Roles, RolesGuard } from '../common/guards/roles.guard';
 import { PrismaService } from '../common/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
-import { AdjustWalletDto, SetUserRoleDto } from './dto/admin.dto';
+import { WITHDRAWAL_STATUS_LABELS, withdrawalStatusLabel } from '../wallet/withdrawal-status.util';
+import { AdjustWalletDto, MarkWithdrawalOtherDto, SetUserRoleDto } from './dto/admin.dto';
 
 // Réservé aux comptes ADMIN uniquement — contrairement au back-office litiges,
 // accessible aussi aux ARBITER (cf. disputes.controller.ts).
@@ -125,55 +126,87 @@ export class AdminController {
 
   // Liste des demandes de retrait — le montant a déjà été débité du solde
   // disponible du joueur à la création (cf. WalletService.withdraw), donc
-  // chaque retrait PENDING est de l'argent réellement en attente d'être
-  // envoyé au joueur (Wave/Orange Money/MTN MoMo) HORS de l'app par un admin,
-  // faute d'intégration de paiement automatique côté sortant (cf. TODO dans
-  // WalletService.withdraw — seuls les dépôts sont automatisés via Wave
-  // Checkout). "approve"/"reject" ci-dessous sont les seules actions qui
-  // permettent de faire avancer cet argent au lieu de le laisser bloqué.
+  // chaque retrait "En cours" (PENDING) est de l'argent réellement en attente
+  // d'être envoyé au joueur (Wave/Orange Money/MTN MoMo) HORS de l'app par un
+  // admin, faute d'intégration de paiement automatique côté sortant (cf. TODO
+  // dans WalletService.withdraw — seuls les dépôts sont automatisés via Wave
+  // Checkout). Statuts possibles pour un retrait : "En cours" (PENDING),
+  // "Effectué" (SUCCESS), "Annulé" (CANCELLED) ou "Autre" (OTHER) — cf.
+  // withdrawal-status.util.ts. `statusLabel` est ajouté à chaque ligne pour
+  // affichage direct côté back-office, sans dupliquer le mapping côté client.
   @Get('withdrawals')
-  listWithdrawals() {
-    return this.prisma.transaction.findMany({
+  async listWithdrawals() {
+    const withdrawals = await this.prisma.transaction.findMany({
       where: { type: 'WITHDRAW' },
       include: { wallet: { include: { user: { select: { id: true, pseudo: true, phone: true } } } } },
       orderBy: { createdAt: 'desc' },
     });
+    return withdrawals.map((tx) => ({ ...tx, statusLabel: withdrawalStatusLabel(tx.status) }));
+  }
+
+  // Les 4 statuts valides pour un retrait, avec leur libellé FR — utile pour
+  // construire un filtre/select côté back-office sans dupliquer le mapping.
+  @Get('withdrawals/statuses')
+  withdrawalStatuses() {
+    return WITHDRAWAL_STATUS_LABELS;
   }
 
   // À utiliser une fois que l'admin a effectivement envoyé les fonds au
   // joueur par le moyen convenu (Wave, Orange Money, MTN MoMo...) — ne
   // touche pas au solde : celui-ci a déjà été débité à la demande de retrait.
+  // Statut résultant : "Effectué" (SUCCESS).
   @Post('withdrawals/:id/approve')
   async approveWithdrawal(@Param('id') id: string) {
-    const tx = await this.prisma.transaction.findUniqueOrThrow({ where: { id } });
-    if (tx.type !== 'WITHDRAW') {
-      throw new BadRequestException('Cette transaction n\'est pas un retrait.');
-    }
-    if (tx.status !== 'PENDING') {
-      throw new BadRequestException(`Ce retrait est déjà "${tx.status}" — aucune action possible.`);
-    }
+    const tx = await this.assertPendingWithdrawal(id);
     return this.prisma.transaction.update({ where: { id }, data: { status: 'SUCCESS' } });
   }
 
   // À utiliser quand le retrait ne peut pas être honoré (ex: coordonnées de
   // paiement invalides, solde crédité par erreur) — recrédite le solde
-  // disponible du joueur puisqu'il avait été débité à la demande.
+  // disponible du joueur puisqu'il avait été débité à la demande. Statut
+  // résultant : "Annulé" (CANCELLED, distinct de FAILED qui reste réservé
+  // aux dépôts Wave rejetés).
   @Post('withdrawals/:id/reject')
-  async rejectWithdrawal(@Param('id') id: string) {
-    const tx = await this.prisma.transaction.findUniqueOrThrow({ where: { id } });
-    if (tx.type !== 'WITHDRAW') {
-      throw new BadRequestException('Cette transaction n\'est pas un retrait.');
-    }
-    if (tx.status !== 'PENDING') {
-      throw new BadRequestException(`Ce retrait est déjà "${tx.status}" — aucune action possible.`);
-    }
+  async rejectWithdrawal(@Param('id') id: string, @Body() dto: MarkWithdrawalOtherDto) {
+    const tx = await this.assertPendingWithdrawal(id);
 
     return this.prisma.$transaction(async (txClient: Prisma.TransactionClient) => {
       await txClient.wallet.update({
         where: { id: tx.walletId },
         data: { balanceAvailable: { increment: tx.amount } },
       });
-      return txClient.transaction.update({ where: { id }, data: { status: 'FAILED' } });
+      return txClient.transaction.update({
+        where: { id },
+        data: { status: 'CANCELLED', adminNote: dto?.note },
+      });
     });
+  }
+
+  // Statut "Autre" (OTHER) : pour un cas qui ne rentre ni dans "Effectué" ni
+  // dans "Annulé" (ex: viré au joueur en dehors du flux normal, litige en
+  // cours sur ce retrait précis...). Contrairement à "Annulé", ne recrédite
+  // PAS le solde — c'est à l'admin de le faire séparément via
+  // wallet-adjustment si besoin, pour éviter un recrédit implicite non
+  // souhaité dans un cas déjà "autre" par définition.
+  @Post('withdrawals/:id/other')
+  async markWithdrawalOther(@Param('id') id: string, @Body() dto: MarkWithdrawalOtherDto) {
+    await this.assertPendingWithdrawal(id);
+    return this.prisma.transaction.update({
+      where: { id },
+      data: { status: 'OTHER', adminNote: dto?.note },
+    });
+  }
+
+  private async assertPendingWithdrawal(id: string) {
+    const tx = await this.prisma.transaction.findUniqueOrThrow({ where: { id } });
+    if (tx.type !== 'WITHDRAW') {
+      throw new BadRequestException('Cette transaction n\'est pas un retrait.');
+    }
+    if (tx.status !== 'PENDING') {
+      throw new BadRequestException(
+        `Ce retrait est déjà "${withdrawalStatusLabel(tx.status)}" — aucune action possible.`,
+      );
+    }
+    return tx;
   }
 }

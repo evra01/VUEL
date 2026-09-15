@@ -251,9 +251,16 @@ class OverlayBubbleService : Service() {
         showToast("📸 Capture en cours…")
         postStatus("capturing")
         try {
-            captureScreen { bitmapBytes ->
+            captureScreen { bitmapBytes, failureReason ->
                 if (bitmapBytes == null) {
-                    showToast("❌ Échec de la capture — réessaie")
+                    // DIAGNOSTIC TEMPORAIRE : affiche la vraie cause de
+                    // l'échec directement dans le toast, en plus du message
+                    // habituel — pas d'accès à `adb logcat` disponible pour
+                    // le moment, donc c'est la seule fenêtre sur la cause
+                    // réelle. À retirer une fois le problème identifié (cf.
+                    // showToast standard "❌ Échec de la capture — réessaie"
+                    // à remettre seul ensuite).
+                    showToast("❌ Échec de la capture [$failureReason] — réessaie")
                     postStatus("capture_failed")
                     return@captureScreen
                 }
@@ -286,7 +293,10 @@ class OverlayBubbleService : Service() {
             // toute panne de capture remonte comme le même message générique
             // et devient impossible à diagnostiquer à distance.
             Log.e("VuelBubble", "Échec de la capture d'écran", e)
-            showToast("❌ Échec de la capture — réessaie")
+            // DIAGNOSTIC TEMPORAIRE (voir commentaire ci-dessus) : le nom de
+            // l'exception + son message apparaissent directement dans le
+            // toast, faute d'accès à logcat pour le moment.
+            showToast("❌ Échec de la capture [${e.javaClass.simpleName}: ${e.message}] — réessaie")
             postStatus("capture_failed")
         }
     }
@@ -401,10 +411,10 @@ class OverlayBubbleService : Service() {
     // commentaire dans setupMediaProjection pour le bug que ça corrige). On
     // se contente ici d'attacher un listener "one-shot" pour récupérer le
     // prochain frame, sans jamais recréer ni libérer le VirtualDisplay.
-    private fun captureScreen(onResult: (ByteArray?) -> Unit) {
+    private fun captureScreen(onResult: (ByteArray?, String?) -> Unit) {
         val reader = imageReader
         if (mediaProjection == null || reader == null) {
-            onResult(null)
+            onResult(null, "pas_de_projection_active")
             return
         }
         val width = captureWidth
@@ -416,7 +426,7 @@ class OverlayBubbleService : Service() {
             if (resolved.compareAndSet(false, true)) {
                 Log.e("VuelBubble", "Timeout capture — aucun frame reçu de MediaProjection")
                 reader.setOnImageAvailableListener(null, null)
-                onResult(null)
+                onResult(null, "timeout_aucun_frame")
             }
         }
 
@@ -428,14 +438,26 @@ class OverlayBubbleService : Service() {
             r.setOnImageAvailableListener(null, null)
             val image = r.acquireLatestImage()
             if (image == null) {
-                onResult(null)
+                onResult(null, "image_nulle")
                 return@setOnImageAvailableListener
             }
-            val bytes = ImageUtils.imageToPngBytes(image, width, height)
+            val bytes = try {
+                ImageUtils.imageToPngBytes(image, width, height)
+            } catch (e: Exception) {
+                Log.e("VuelBubble", "Échec conversion PNG", e)
+                image.close()
+                onResult(null, "conversion_png:${e.javaClass.simpleName}")
+                return@setOnImageAvailableListener
+            }
             image.close()
-            onResult(bytes)
+            onResult(bytes, null)
         }, Handler(Looper.getMainLooper()))
 
-        timeoutHandler.postDelayed(timeoutRunnable, 3000L)
+        // Marge portée à 6s (au lieu de 3s) : sur certains appareils/jeux
+        // très gourmands en GPU, le premier frame après ouverture de
+        // l'ImageReader peut mettre plus de temps à arriver que sur un écran
+        // d'accueil classique — 3s s'est avéré parfois trop court en usage
+        // réel pendant un duel (jeu en cours, charge GPU élevée).
+        timeoutHandler.postDelayed(timeoutRunnable, 6000L)
     }
 }

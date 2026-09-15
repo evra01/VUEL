@@ -16,43 +16,64 @@ import { Injectable, Logger } from '@nestjs/common';
 export class TelegramNotifierService {
   private readonly logger = new Logger(TelegramNotifierService.name);
 
-  /// Renvoie l'id du message Telegram envoyé (utilisé pour router les
-  /// réponses d'arbitrage, cf. TelegramCommandsService), ou null si l'envoi
-  /// a échoué ou que Telegram n'est pas configuré.
-  async sendCapturePhoto(imageBuffer: Buffer, caption: string): Promise<number | null> {
+  /// Renvoie soit l'id du message Telegram envoyé (utilisé pour router les
+  /// réponses d'arbitrage, cf. TelegramCommandsService), soit un motif
+  /// d'échec explicite — distingué pour que CapturesService puisse renvoyer
+  /// un message d'erreur diagnostiquable au joueur/à l'admin plutôt qu'un
+  /// "indisponible" générique à chaque fois (cf. submitProof).
+  ///
+  /// Une capture perdue à cause d'un simple pépin réseau transitoire vers
+  /// l'API Telegram (timeout, coupure ponctuelle...) est irrécupérable
+  /// puisque c'est l'unique copie de la preuve (cf. CapturesService) — d'où
+  /// une tentative de renvoi avant d'abandonner, plutôt que d'échouer sec au
+  /// premier accroc.
+  async sendCapturePhoto(
+    imageBuffer: Buffer,
+    caption: string,
+  ): Promise<{ ok: true; messageId: number | null } | { ok: false; reason: 'not_configured' | 'telegram_error' | 'network_error' }> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!token || !chatId) {
       this.logger.warn(
-        'TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID non définies — capture non relayée vers Telegram.',
+        'TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID non définies — capture non relayée vers Telegram. ' +
+          "C'est la cause la plus fréquente d'un échec systématique de l'envoi de preuve : configurer ces " +
+          "deux variables d'environnement côté back-end (cf. .env.example) avant de réessayer.",
       );
-      return null;
+      return { ok: false, reason: 'not_configured' };
     }
 
-    try {
-      const form = new FormData();
-      form.append('chat_id', chatId);
-      form.append('caption', caption);
-      form.append('photo', new Blob([new Uint8Array(imageBuffer)], { type: 'image/png' }), 'capture.png');
+    let lastFailureReason: 'telegram_error' | 'network_error' = 'network_error';
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const form = new FormData();
+        form.append('chat_id', chatId);
+        form.append('caption', caption);
+        form.append('photo', new Blob([new Uint8Array(imageBuffer)], { type: 'image/png' }), 'capture.png');
 
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-        method: 'POST',
-        body: form,
-      });
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+          method: 'POST',
+          body: form,
+        });
 
-      const body = await res.json().catch(() => null);
-      if (!res.ok || !body?.ok) {
-        this.logger.error(`Échec d'envoi vers Telegram (${res.status}): ${JSON.stringify(body)}`);
-        return null;
+        const body = await res.json().catch(() => null);
+        if (!res.ok || !body?.ok) {
+          this.logger.error(`Échec d'envoi vers Telegram (${res.status}, tentative ${attempt}/2): ${JSON.stringify(body)}`);
+          lastFailureReason = 'telegram_error';
+          // Une erreur 4xx de l'API Telegram (mauvais chat_id, bot bloqué du
+          // canal, token invalide...) ne se résoudra pas en réessayant à
+          // l'identique — inutile d'attendre la 2e tentative dans ce cas.
+          if (res.status >= 400 && res.status < 500) return { ok: false, reason: 'telegram_error' };
+          continue;
+        }
+        return { ok: true, messageId: body.result?.message_id ?? null };
+      } catch (err) {
+        this.logger.error(`Erreur réseau en envoyant la capture vers Telegram (tentative ${attempt}/2):`, err);
+        lastFailureReason = 'network_error';
       }
-      return body.result?.message_id ?? null;
-    } catch (err) {
-      // Ne jamais faire échouer la soumission de preuve à cause d'un souci
-      // réseau/Telegram — c'est un canal secondaire, pas le flux critique.
-      this.logger.error('Erreur réseau en envoyant la capture vers Telegram:', err);
-      return null;
+      if (attempt === 1) await new Promise((resolve) => setTimeout(resolve, 1500));
     }
+    return { ok: false, reason: lastFailureReason };
   }
 
   /// Réponse textuelle simple (confirmation/erreur d'une commande d'arbitrage,

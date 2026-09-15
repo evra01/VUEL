@@ -40,10 +40,17 @@ enum TransactionType {
   REFUND
 }
 
+// Statuts génériques (dépôts, ajustements admin...). Pour les RETRAITS
+// spécifiquement, seuls PENDING ("En cours"), SUCCESS ("Effectué"),
+// CANCELLED ("Annulé") et OTHER ("Autre") sont utilisés côté back-office
+// (cf. AdminController withdrawals/*, WITHDRAW_STATUS_LABELS) — FAILED reste
+// réservé aux dépôts Wave rejetés (cf. WalletService.rejectDeposit).
 enum TransactionStatus {
   PENDING
   SUCCESS
   FAILED
+  CANCELLED
+  OTHER
 }
 
 enum DisputeStatus {
@@ -128,6 +135,10 @@ model Transaction {
   // Sans objet pour l'ancien workflow Wave Checkout (webhook auto).
   payerPhone  String?
   status      TransactionStatus  @default(PENDING)
+  // Note libre laissée par l'admin en traitant la transaction (surtout utile
+  // pour les retraits marqués "Autre", cf. MarkWithdrawalOtherDto) — jamais
+  // renseignée automatiquement.
+  adminNote   String?
   createdAt   DateTime           @default(now())
 }
 
@@ -176,6 +187,14 @@ model Duel {
   mode        String
   stakeAmount Int
   status      DuelStatus @default(OPEN)
+
+  // Code court unique du salon (6 caractères, ex: "K7QX2M") — affiché/partagé
+  // à la place de l'UUID technique `id` pour que le lien d'invitation et la
+  // saisie manuelle dans "Rejoindre avec un code" restent simples (cf.
+  // DuelsService.generateJoinCode, DuelInviteController). Nullable pour
+  // rester compatible avec les duels déjà en base créés avant l'ajout de ce
+  // champ (repli sur `id` dans ce cas côté DuelInviteController).
+  joinCode  String?    @unique
 
   playerAId String
   playerA   User   @relation("PlayerA", fields: [playerAId], references: [id])

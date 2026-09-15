@@ -1,7 +1,22 @@
+import { Prisma } from '@prisma/client';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { EscrowService } from '../escrow/escrow.service';
 import { CreateDuelDto, JoinDuelDto } from './dto/duels.dto';
+
+// UUID v4 (format de Duel.id, généré par Prisma @default(uuid())) — sert à
+// distinguer un identifiant technique d'un code de salon court quand
+// DuelsService.get()/getPublicPreview() reçoivent l'un ou l'autre (cf.
+// DuelInviteController, et l'écran "Rejoindre avec un code" côté mobile).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Alphabet volontairement réduit pour un code facile à lire/dicter/taper à la
+// main : que des majuscules, chiffres 2-9, sans caractères ambigus à
+// l'affichage (0/O, 1/I/L). 6 caractères ≈ 1 milliard de combinaisons —
+// largement suffisant vu le faible nombre de duels ouverts en parallèle, avec
+// une nouvelle tentative en cas de collision improbable (cf. create()).
+const JOIN_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const JOIN_CODE_LENGTH = 6;
 
 @Injectable()
 export class DuelsService {
@@ -17,20 +32,55 @@ export class DuelsService {
     });
   }
 
+  private generateJoinCode(): string {
+    let code = '';
+    for (let i = 0; i < JOIN_CODE_LENGTH; i++) {
+      code += JOIN_CODE_ALPHABET[Math.floor(Math.random() * JOIN_CODE_ALPHABET.length)];
+    }
+    return code;
+  }
+
+  // Contrainte @unique en base sur joinCode : en cas de collision (improbable
+  // vu l'espace de codes, cf. JOIN_CODE_ALPHABET), on retente avec un nouveau
+  // code plutôt que de faire échouer la création du salon.
+  private async createWithUniqueJoinCode(data: Prisma.DuelUncheckedCreateInput) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        return await this.prisma.duel.create({ data: { ...data, joinCode: this.generateJoinCode() } });
+      } catch (err: any) {
+        if (err?.code === 'P2002' && attempt < 4) continue; // collision sur joinCode — on retente
+        throw err;
+      }
+    }
+    throw new BadRequestException("Impossible de générer un code de salon unique, réessaie.");
+  }
+
   create(userId: string, dto: CreateDuelDto) {
-    return this.prisma.duel.create({
-      data: {
-        game: dto.game,
-        mode: dto.mode,
-        stakeAmount: dto.stakeAmount,
-        // Ignoré hors EFOOTBALL (cf. CreateDuelDto) — jamais stocké pour les
-        // autres jeux, même si fourni, pour éviter tout faux-positif dans le
-        // matching de nom d'équipe côté OCR (cf. teamsMatch).
-        playerATeam: dto.game === 'EFOOTBALL' ? dto.playerATeam : null,
-        playerAId: userId,
-        status: 'OPEN',
-      },
+    return this.createWithUniqueJoinCode({
+      game: dto.game,
+      mode: dto.mode,
+      stakeAmount: dto.stakeAmount,
+      // Ignoré hors EFOOTBALL (cf. CreateDuelDto) — jamais stocké pour les
+      // autres jeux, même si fourni, pour éviter tout faux-positif dans le
+      // matching de nom d'équipe côté OCR (cf. teamsMatch).
+      playerATeam: dto.game === 'EFOOTBALL' ? dto.playerATeam : null,
+      playerAId: userId,
+      status: 'OPEN',
     });
+  }
+
+  // Résout un identifiant de salon qui peut être soit l'UUID technique
+  // (`Duel.id`), soit le code court partagé aux joueurs (`Duel.joinCode`,
+  // cf. generateJoinCode) — insensible à la casse et aux espaces pour rester
+  // tolérant à la saisie manuelle. Utilisé par get()/getPublicPreview() pour
+  // que le lien d'invitation ET le champ "Rejoindre avec un code" acceptent
+  // le même code court sans exposer l'UUID.
+  private async resolveDuel(idOrCode: string, include: Prisma.DuelInclude) {
+    const cleaned = idOrCode.trim();
+    const where: Prisma.DuelWhereUniqueInput = UUID_RE.test(cleaned)
+      ? { id: cleaned }
+      : { joinCode: cleaned.toUpperCase() };
+    return this.prisma.duel.findUnique({ where, include });
   }
 
   async join(userId: string, duelId: string, dto: JoinDuelDto) {
@@ -116,14 +166,12 @@ export class DuelsService {
   // rejoignent le salon (cf. DuelInviteController). On n'expose QUE des infos
   // non sensibles : jamais de wallet, jamais de contact, juste de quoi donner
   // envie de rejoindre et de confirmer que le salon existe encore.
-  async getPublicPreview(duelId: string) {
-    const duel = await this.prisma.duel.findUnique({
-      where: { id: duelId },
-      include: { playerA: { select: { pseudo: true } } },
-    });
+  async getPublicPreview(duelIdOrCode: string) {
+    const duel = await this.resolveDuel(duelIdOrCode, { playerA: { select: { pseudo: true } } });
     if (!duel) throw new NotFoundException();
     return {
       id: duel.id,
+      joinCode: duel.joinCode,
       game: duel.game,
       mode: duel.mode,
       stakeAmount: duel.stakeAmount,
@@ -132,11 +180,8 @@ export class DuelsService {
     };
   }
 
-  async get(duelId: string) {
-    const duel = await this.prisma.duel.findUnique({
-      where: { id: duelId },
-      include: { escrow: true, proofs: true, dispute: true },
-    });
+  async get(duelIdOrCode: string) {
+    const duel = await this.resolveDuel(duelIdOrCode, { escrow: true, proofs: true, dispute: true });
     if (!duel) throw new NotFoundException();
     return duel;
   }
