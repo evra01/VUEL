@@ -77,6 +77,31 @@ class OverlayBubbleService : Service() {
     private var captureWidth: Int = 0
     private var captureHeight: Int = 0
 
+    // BUG CORRIGÉ ICI (symptôme : "Échec de la capture [timeout_aucun_frame]"
+    // systématique, y compris sur l'écran d'accueil — donc rien à voir avec
+    // un jeu en particulier). imageReader est créé avec maxImages=2. L'ancien
+    // code n'attachait un OnImageAvailableListener QUE pendant une capture
+    // (attaché au tap sur la bulle, détaché juste après le frame reçu). Entre
+    // deux captures — et surtout entre la création de l'ImageReader au début
+    // du duel et le tout premier tap — personne n'appelait jamais
+    // acquireLatestImage()/close() : dès que les 2 emplacements de buffer de
+    // l'ImageReader étaient remplis (en une fraction de seconde), le
+    // producteur système (SurfaceFlinger, qui alimente le VirtualDisplay) se
+    // bloquait en attendant qu'un emplacement se libère — ce qui n'arrivait
+    // jamais. Résultat : le pipeline entier se figeait dès le début du duel,
+    // et le premier tap (attachant un nouveau listener) attendait un "nouveau"
+    // frame qui ne viendrait plus jamais → timeout systématique, quel que
+    // soit le contenu affiché à l'écran.
+    // Fix : un SEUL listener permanent, attaché une fois pour toutes dans
+    // setupCaptureSurface(), qui vide continuellement la file (acquire+close
+    // immédiat) pour ne jamais la laisser saturer. Il ne fait la conversion
+    // PNG (coûteuse) que lorsqu'une capture a été explicitement demandée via
+    // captureScreen() — le reste du temps il se contente de libérer le
+    // buffer, ce qui est quasi gratuit en CPU.
+    private val captureTimeoutHandler = Handler(Looper.getMainLooper())
+    private var pendingCaptureCallback: ((ByteArray?, String?) -> Unit)? = null
+    private var pendingCaptureTimeout: Runnable? = null
+
     private var duelId: String = ""
     private var baseUrl: String = ""
     private var accessToken: String = ""
@@ -389,12 +414,46 @@ class OverlayBubbleService : Service() {
         captureWidth = metrics.widthPixels
         captureHeight = metrics.heightPixels
 
-        imageReader = ImageReader.newInstance(captureWidth, captureHeight, PixelFormat.RGBA_8888, 2)
+        val reader = ImageReader.newInstance(captureWidth, captureHeight, PixelFormat.RGBA_8888, 2)
+        imageReader = reader
+
+        // Listener PERMANENT (voir le commentaire sur pendingCaptureCallback
+        // plus haut) : vide systématiquement la file dès qu'un frame arrive,
+        // pour ne jamais laisser le producteur (SurfaceFlinger) se bloquer.
+        // Ne fait la conversion PNG que si une capture est en attente.
+        reader.setOnImageAvailableListener({ r ->
+            val image = r.acquireLatestImage()
+            if (image == null) {
+                // Rien à consommer cette fois (peut arriver si plusieurs
+                // callbacks se chevauchent) — rien d'autre à faire.
+                return@setOnImageAvailableListener
+            }
+            val callback = pendingCaptureCallback
+            if (callback == null) {
+                // Aucune capture demandée : on libère juste le buffer.
+                image.close()
+                return@setOnImageAvailableListener
+            }
+            pendingCaptureCallback = null
+            pendingCaptureTimeout?.let { captureTimeoutHandler.removeCallbacks(it) }
+            pendingCaptureTimeout = null
+            val bytes = try {
+                ImageUtils.imageToPngBytes(image, captureWidth, captureHeight)
+            } catch (e: Exception) {
+                Log.e("VuelBubble", "Échec conversion PNG", e)
+                image.close()
+                callback(null, "conversion_png:${e.javaClass.simpleName}")
+                return@setOnImageAvailableListener
+            }
+            image.close()
+            callback(bytes, null)
+        }, Handler(Looper.getMainLooper()))
+
         virtualDisplay = projection.createVirtualDisplay(
             "VuelCapture",
             captureWidth, captureHeight, metrics.densityDpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader!!.surface, null, null,
+            reader.surface, null, null,
         )
     }
 
@@ -404,60 +463,37 @@ class OverlayBubbleService : Service() {
         imageReader?.setOnImageAvailableListener(null, null)
         imageReader?.close()
         imageReader = null
+        pendingCaptureTimeout?.let { captureTimeoutHandler.removeCallbacks(it) }
+        pendingCaptureTimeout = null
+        pendingCaptureCallback = null
     }
 
-    // Capture d'un seul frame sur le VirtualDisplay/ImageReader déjà ouverts
-    // (mis en place une fois pour toutes dans setupCaptureSurface — voir le
-    // commentaire dans setupMediaProjection pour le bug que ça corrige). On
-    // se contente ici d'attacher un listener "one-shot" pour récupérer le
-    // prochain frame, sans jamais recréer ni libérer le VirtualDisplay.
+    // Demande la conversion PNG du prochain frame drainé par le listener
+    // permanent de imageReader (voir setupCaptureSurface). Le VirtualDisplay
+    // et l'ImageReader eux-mêmes restent ouverts pour toute la durée du duel
+    // (voir le commentaire dans setupMediaProjection sur le bug Android 14
+    // que ça corrige) — seule cette demande ponctuelle est "one-shot".
     private fun captureScreen(onResult: (ByteArray?, String?) -> Unit) {
-        val reader = imageReader
-        if (mediaProjection == null || reader == null) {
+        if (mediaProjection == null || imageReader == null) {
             onResult(null, "pas_de_projection_active")
             return
         }
-        val width = captureWidth
-        val height = captureHeight
-
-        val resolved = java.util.concurrent.atomic.AtomicBoolean(false)
-        val timeoutHandler = Handler(Looper.getMainLooper())
+        if (pendingCaptureCallback != null) {
+            onResult(null, "capture_deja_en_cours")
+            return
+        }
+        pendingCaptureCallback = onResult
         val timeoutRunnable = Runnable {
-            if (resolved.compareAndSet(false, true)) {
+            if (pendingCaptureCallback != null) {
+                pendingCaptureCallback = null
                 Log.e("VuelBubble", "Timeout capture — aucun frame reçu de MediaProjection")
-                reader.setOnImageAvailableListener(null, null)
                 onResult(null, "timeout_aucun_frame")
             }
         }
-
-        reader.setOnImageAvailableListener({ r ->
-            if (!resolved.compareAndSet(false, true)) return@setOnImageAvailableListener
-            timeoutHandler.removeCallbacks(timeoutRunnable)
-            // Détache le listener one-shot tout de suite — le VirtualDisplay et
-            // l'ImageReader eux restent ouverts pour la prochaine capture.
-            r.setOnImageAvailableListener(null, null)
-            val image = r.acquireLatestImage()
-            if (image == null) {
-                onResult(null, "image_nulle")
-                return@setOnImageAvailableListener
-            }
-            val bytes = try {
-                ImageUtils.imageToPngBytes(image, width, height)
-            } catch (e: Exception) {
-                Log.e("VuelBubble", "Échec conversion PNG", e)
-                image.close()
-                onResult(null, "conversion_png:${e.javaClass.simpleName}")
-                return@setOnImageAvailableListener
-            }
-            image.close()
-            onResult(bytes, null)
-        }, Handler(Looper.getMainLooper()))
-
-        // Marge portée à 6s (au lieu de 3s) : sur certains appareils/jeux
-        // très gourmands en GPU, le premier frame après ouverture de
-        // l'ImageReader peut mettre plus de temps à arriver que sur un écran
-        // d'accueil classique — 3s s'est avéré parfois trop court en usage
-        // réel pendant un duel (jeu en cours, charge GPU élevée).
-        timeoutHandler.postDelayed(timeoutRunnable, 6000L)
+        pendingCaptureTimeout = timeoutRunnable
+        // Marge portée à 6s (au lieu de 3s) : sur certains appareils/jeux très
+        // gourmands en GPU, le premier frame peut mettre plus de temps à
+        // arriver que sur un écran d'accueil classique.
+        captureTimeoutHandler.postDelayed(timeoutRunnable, 6000L)
     }
 }
