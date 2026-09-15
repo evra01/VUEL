@@ -78,5 +78,40 @@ ThemeData buildVuelTheme() {
       unselectedLabelColor: VuelColors.muted,
       indicatorColor: VuelColors.amber,
     ),
+    // Style global pour TOUTES les boîtes de dialogue de l'app (confirmation,
+    // formulaires de mise, etc.) — coins arrondis cohérents avec le reste de
+    // l'UI (cardTheme, inputDecorationTheme) plutôt que les coins par défaut
+    // de Material, et titre/texte alignés sur la palette Vuel plutôt que sur
+    // les couleurs Material par défaut (qui juraient avec le fond sombre).
+    dialogTheme: DialogThemeData(
+      backgroundColor: VuelColors.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: VuelColors.border, width: 0.5),
+      ),
+      titleTextStyle: const TextStyle(color: VuelColors.text, fontSize: 18, fontWeight: FontWeight.w600),
+      contentTextStyle: const TextStyle(color: VuelColors.muted, fontSize: 14, height: 1.4),
+    ),
+    // Style global pour TOUS les SnackBar de l'app, y compris ceux construits
+    // à la main ailleurs (SnackBar(content: Text(...))) — ils héritent
+    // automatiquement de ce style sans qu'il faille toucher chaque appel.
+    // behavior: floating + marge + coins arrondis, au lieu du bandeau plein
+    // largeur collé en bas par défaut, qui passait inaperçu et jurait avec
+    // le reste de l'UI. Les couleurs par type (succès/erreur/avertissement)
+    // restent définies au cas par cas via VuelFeedback (voir
+    // core/widgets/vuel_feedback.dart), ce thème ne fixe que la base neutre.
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: VuelColors.surface2,
+      contentTextStyle: const TextStyle(color: VuelColors.text, fontSize: 14),
+      behavior: SnackBarBehavior.floating,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: VuelColors.border, width: 0.5),
+      ),
+      actionTextColor: VuelColors.amber,
+      elevation: 4,
+    ),
   );
 }

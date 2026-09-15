@@ -52,7 +52,7 @@ export class CapturesService {
     const telegramMessageId = result.messageId;
 
     const proof = await this.prisma.screenshotProof.create({
-      data: { duelId, userId, telegramMessageId },
+      data: { duelId, userId, telegramMessageId, telegramFileId: result.fileId },
     });
 
     await this.ocrQueue.enqueue(proof.id, fileBuffer.toString('base64'));

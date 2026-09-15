@@ -287,6 +287,12 @@ model ScreenshotProof {
   // pour router les commandes d'arbitrage envoyées en réponse à ce message
   // (cf. TelegramCommandsService).
   telegramMessageId Int?
+  // file_id renvoyé par l'API Telegram avec le message (cf. sendCapturePhoto)
+  // — permet de re-télécharger l'image à la demande via getFile pour
+  // l'afficher dans la page admin (cf. AdminProofsController), SANS dupliquer
+  // le stockage : Telegram reste la seule copie durable, on ne fait que la
+  // relire à la volée quand un admin veut la voir.
+  telegramFileId String?
   ocrRawResult   String?
   ocrScoreDetected String?
   ocrTeamsDetected String?

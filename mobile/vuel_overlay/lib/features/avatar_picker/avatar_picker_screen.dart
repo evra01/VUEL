@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/api/user_api_client.dart';
 import '../../core/assets/app_avatar_icons.dart';
 import '../../core/widgets/player_avatar.dart';
+import '../../core/widgets/vuel_feedback.dart';
 
 /// Grille des icônes fournies par l'app — le joueur en choisit une, aucune
 /// photo n'est demandée. cf. décision produit : icônes d'app plutôt que photo.
@@ -39,9 +40,7 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
       if (mounted) Navigator.of(context).pop(_selected);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Échec de l\'enregistrement — réessaie.')),
-        );
+        VuelFeedback.error(context, 'Échec de l\'enregistrement — réessaie.');
       }
     } finally {
       if (mounted) setState(() => _saving = false);

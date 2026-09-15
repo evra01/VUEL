@@ -5,6 +5,7 @@ import '../../../core/api/tournaments_api_client.dart';
 import '../../../core/api/user_api_client.dart';
 import '../../../core/assets/game_logos.dart';
 import '../../../core/theme/vuel_theme.dart';
+import '../../../core/widgets/vuel_feedback.dart';
 import '../../../core/share/duel_share.dart';
 import '../../duel_room/duel_room_screen.dart';
 import '../../tournaments/tournaments_screen.dart';
@@ -82,7 +83,7 @@ class _PlayTabState extends State<PlayTab> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        VuelFeedback.error(context, e.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -97,15 +98,13 @@ class _PlayTabState extends State<PlayTab> {
     final bool isEfootball = _selectedGame == 'EFOOTBALL';
     final team = _teamController.text.trim();
     if (isEfootball && team.length < 2) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Indique le nom de ton équipe (2 caractères minimum)')));
+      VuelFeedback.warning(context, 'Indique le nom de ton équipe (2 caractères minimum)');
       return;
     }
 
     final int? stake = _customStakeSelected ? int.tryParse(_customStakeController.text.trim()) : _selectedStake;
     if (stake == null || stake < _minStake) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('La mise minimum est de $_minStake F')));
+      VuelFeedback.warning(context, 'La mise minimum est de $_minStake F');
       return;
     }
 
@@ -120,29 +119,40 @@ class _PlayTabState extends State<PlayTab> {
       if (mounted) {
         final createdId = created['id'] as String?;
         final createdJoinCode = created['joinCode'] as String?;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Duel créé — en attente d\'un adversaire'),
-          action: createdId != null
-              ? SnackBarAction(
-                  label: 'Inviter un ami',
-                  onPressed: () => shareDuelInvite(
-                    context: context,
-                    baseUrl: widget.baseUrl,
-                    duelId: createdId,
-                    joinCode: createdJoinCode,
-                    game: _selectedGame,
-                    stakeAmount: stake,
-                  ),
-                )
-              : null,
-          duration: const Duration(seconds: 6),
-        ));
+        // Garde un SnackBar construit à la main ici (pas VuelFeedback) car il
+        // a besoin d'un bouton d'action ("Inviter un ami") — même icône de
+        // succès que VuelFeedback.success pour rester visuellement cohérent.
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: VuelColors.green, size: 20),
+                SizedBox(width: 12),
+                Expanded(child: Text('Duel créé — en attente d\'un adversaire')),
+              ],
+            ),
+            action: createdId != null
+                ? SnackBarAction(
+                    label: 'Inviter un ami',
+                    onPressed: () => shareDuelInvite(
+                      context: context,
+                      baseUrl: widget.baseUrl,
+                      duelId: createdId,
+                      joinCode: createdJoinCode,
+                      game: _selectedGame,
+                      stakeAmount: stake,
+                    ),
+                  )
+                : null,
+            duration: const Duration(seconds: 6),
+          ));
       }
       _teamController.clear();
       await _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        VuelFeedback.error(context, e.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _creating = false);
@@ -210,8 +220,7 @@ class _PlayTabState extends State<PlayTab> {
       if (team == null) return; // annulé
       if (team.length < 2) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Indique le nom de ton équipe (2 caractères minimum)')));
+          VuelFeedback.warning(context, 'Indique le nom de ton équipe (2 caractères minimum)');
         }
         return;
       }
@@ -222,8 +231,7 @@ class _PlayTabState extends State<PlayTab> {
       _openDuel(duelId, joinCode: duel['joinCode'] as String?);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        VuelFeedback.error(context, e.toString().replaceFirst('Exception: ', ''));
       }
     }
   }
@@ -268,8 +276,7 @@ class _PlayTabState extends State<PlayTab> {
       await _joinDuel(duel);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        VuelFeedback.error(context, e.toString().replaceFirst('Exception: ', ''));
       }
     }
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/api/wallet_api_client.dart';
 import '../../../core/assets/game_logos.dart';
 import '../../../core/theme/vuel_theme.dart';
+import '../../../core/widgets/vuel_feedback.dart';
 
 /// Reprend l'écran "PORTEFEUILLE" de la PWA — solde dispo/verrouillé,
 /// historique des transactions, dépôt Wave.
@@ -49,7 +50,7 @@ class _WalletTabState extends State<WalletTab> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        VuelFeedback.error(context, e.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -67,15 +68,13 @@ class _WalletTabState extends State<WalletTab> {
     try {
       await widget.walletClient.depositViaWave(amount, phoneNumber);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Demande envoyée — un admin valide ton dépôt dès réception du paiement.'),
-        ));
+        VuelFeedback.success(context, 'Demande envoyée — un admin valide ton dépôt dès réception du paiement.');
       }
       // Le solde ne se met à jour qu'après validation manuelle du dépôt
       // (Telegram) — on rafraîchit au retour au premier plan, pas ici.
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        VuelFeedback.error(context, e.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _depositing = false);
@@ -177,14 +176,12 @@ class _WalletTabState extends State<WalletTab> {
     try {
       await widget.walletClient.withdraw(amount, 'wave');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Demande de retrait envoyée — un admin va te l\'envoyer sous peu sur Wave.'),
-        ));
+        VuelFeedback.success(context, 'Demande de retrait envoyée — un admin va te l\'envoyer sous peu sur Wave.');
       }
       await _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        VuelFeedback.error(context, e.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _withdrawing = false);

@@ -30,7 +30,7 @@ export class TelegramNotifierService {
   async sendCapturePhoto(
     imageBuffer: Buffer,
     caption: string,
-  ): Promise<{ ok: true; messageId: number | null } | { ok: false; reason: 'not_configured' | 'telegram_error' | 'network_error' }> {
+  ): Promise<{ ok: true; messageId: number | null; fileId: string | null } | { ok: false; reason: 'not_configured' | 'telegram_error' | 'network_error' }> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -66,7 +66,7 @@ export class TelegramNotifierService {
           if (res.status >= 400 && res.status < 500) return { ok: false, reason: 'telegram_error' };
           continue;
         }
-        return { ok: true, messageId: body.result?.message_id ?? null };
+        return { ok: true, messageId: body.result?.message_id ?? null, fileId: this.largestPhotoFileId(body.result?.photo) };
       } catch (err) {
         this.logger.error(`Erreur réseau en envoyant la capture vers Telegram (tentative ${attempt}/2):`, err);
         lastFailureReason = 'network_error';
@@ -152,6 +152,52 @@ export class TelegramNotifierService {
       });
     } catch (err) {
       this.logger.error('Erreur réseau en répondant au callback Telegram:', err);
+    }
+  }
+
+  /// Telegram renvoie plusieurs résolutions de la même photo (tableau trié du
+  /// plus petit au plus grand) — on garde la plus grande pour l'affichage
+  /// dans la page admin (cf. getProofImage).
+  private largestPhotoFileId(photo: { file_id: string }[] | undefined): string | null {
+    if (!photo || photo.length === 0) return null;
+    return photo[photo.length - 1].file_id;
+  }
+
+  /// Retélécharge une capture depuis Telegram à partir de son file_id (cf.
+  /// ScreenshotProof.telegramFileId) — utilisé UNIQUEMENT par la page admin
+  /// pour afficher la photo au moment de valider un duel (cf.
+  /// AdminProofsController.getProofImage). Deux appels sont nécessaires côté
+  /// API Telegram : getFile pour résoudre le file_path (les file_id ne sont
+  /// pas des URLs directes), puis un GET classique sur le CDN fichiers de
+  /// Telegram avec ce chemin — voir
+  /// https://core.telegram.org/bots/api#getfile. Ne duplique aucun stockage :
+  /// l'image n'est jamais gardée sur ce serveur, seulement relayée à la volée.
+  async getProofImage(fileId: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) return null;
+
+    try {
+      const fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+      const fileBody = await fileRes.json().catch(() => null);
+      const filePath: string | undefined = fileBody?.result?.file_path;
+      if (!fileRes.ok || !fileBody?.ok || !filePath) {
+        this.logger.error(`Échec getFile Telegram pour file_id=${fileId}: ${JSON.stringify(fileBody)}`);
+        return null;
+      }
+
+      const downloadRes = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
+      if (!downloadRes.ok) {
+        this.logger.error(`Échec du téléchargement du fichier Telegram (${downloadRes.status}): ${filePath}`);
+        return null;
+      }
+      const arrayBuffer = await downloadRes.arrayBuffer();
+      return {
+        buffer: Buffer.from(arrayBuffer),
+        contentType: downloadRes.headers.get('content-type') ?? 'image/jpeg',
+      };
+    } catch (err) {
+      this.logger.error(`Erreur réseau en retéléchargeant la capture Telegram (file_id=${fileId}):`, err);
+      return null;
     }
   }
 }

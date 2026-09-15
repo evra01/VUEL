@@ -11,6 +11,7 @@ import '../capture/widgets/capture_status_banner.dart';
 import '../device_setup/device_setup_screen.dart';
 import '../../core/api/user_api_client.dart';
 import '../../core/theme/vuel_theme.dart';
+import '../../core/widgets/vuel_feedback.dart';
 import '../../core/share/duel_share.dart';
 
 class DuelRoomScreen extends StatefulWidget {
@@ -106,7 +107,20 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
       onDuelStarted: (status) {
         setState(() => _status = status);
         _addSystemEvent('Le duel a commencé 🔥');
-        _startCapture();
+        // BUG CORRIGÉ ICI : si le duel est déjà en cours au moment où cet
+        // écran s'ouvre (on rejoint un salon dont le duel a déjà démarré),
+        // le serveur peut renvoyer "duel_started" dès la connexion du socket
+        // — potentiellement avant même que Flutter ait fini d'insérer cet
+        // écran dans l'arbre de navigation (on est encore dans initState()).
+        // Appeler showDialog() à ce moment précis (_startCapture affiche une
+        // boîte de dialogue) cherche un Navigator/Overlay ancêtre alors que
+        // l'élément courant n'est pas encore pleinement "monté" → corrompt
+        // l'arbre interne de Flutter (crash "_dependents.isEmpty': is not
+        // true"). addPostFrameCallback reporte l'appel au frame suivant,
+        // une fois l'écran garanti pleinement construit et monté.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _startCapture();
+        });
       },
       onChatMessage: (message) => _addTimelineItem(message),
       onChatHistory: (history) {
@@ -116,7 +130,7 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
         });
         _scrollToBottom();
       },
-      onError: (message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message))),
+      onError: (message) => VuelFeedback.error(context, message),
     );
   }
 
@@ -188,9 +202,7 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
         accessToken: widget.accessToken,
       );
       if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Capture d\'écran refusée — active-la pour envoyer ton score.')),
-        );
+        VuelFeedback.warning(context, 'Capture d\'écran refusée — active-la pour envoyer ton score.');
       }
     } on PlatformException catch (e) {
       if (!mounted) return;
@@ -198,21 +210,33 @@ class _DuelRoomScreenState extends State<DuelRoomScreen> {
         // La bulle ne peut pas s'afficher sans cette permission distincte de
         // celle de capture d'écran — on guide directement vers l'écran où
         // elle se configure, plutôt que de laisser l'utilisateur deviner
-        // pourquoi rien ne s'affiche à l'écran.
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Autorise l\'affichage par-dessus les autres apps pour voir la bulle.'),
-            action: SnackBarAction(
-              label: 'Configurer',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => DeviceSetupScreen(apiClient: _userClient)),
+        // pourquoi rien ne s'affiche à l'écran. Ce cas a besoin d'un bouton
+        // d'action ("Configurer") que VuelFeedback ne gère pas — on garde donc
+        // un SnackBar construit à la main ici, mais avec la même icône
+        // d'avertissement que VuelFeedback.warning pour rester cohérent
+        // visuellement avec le reste de l'app.
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(Icons.info_rounded, color: VuelColors.amber, size: 20),
+                  SizedBox(width: 12),
+                  Expanded(child: Text('Autorise l\'affichage par-dessus les autres apps pour voir la bulle.')),
+                ],
               ),
+              action: SnackBarAction(
+                label: 'Configurer',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => DeviceSetupScreen(apiClient: _userClient)),
+                ),
+              ),
+              duration: const Duration(seconds: 6),
             ),
-            duration: const Duration(seconds: 6),
-          ),
-        );
+          );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? 'Échec de la capture')));
+        VuelFeedback.error(context, e.message ?? 'Échec de la capture');
       }
     }
   }

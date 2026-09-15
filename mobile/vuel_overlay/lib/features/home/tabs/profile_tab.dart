@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/api/user_api_client.dart';
 import '../../../core/theme/vuel_theme.dart';
+import '../../../core/widgets/vuel_feedback.dart';
 import '../../../core/widgets/player_avatar.dart';
 import '../../avatar_picker/avatar_picker_screen.dart';
 import '../../device_setup/device_setup_screen.dart';
@@ -35,7 +36,7 @@ class _ProfileTabState extends State<ProfileTab> {
       setState(() => _profile = profile);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        VuelFeedback.error(context, e.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -108,7 +109,7 @@ class _ProfileTabState extends State<ProfileTab> {
       _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        VuelFeedback.error(context, e.toString().replaceFirst('Exception: ', ''));
       }
     }
   }

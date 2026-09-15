@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/api/tournaments_api_client.dart';
+import '../../core/widgets/vuel_feedback.dart';
 
 const _minStake = 200; // FCFA — mise minimum, cf. décision produit + validation back-end
 
@@ -29,7 +30,7 @@ class _TournamentsScreenState extends State<TournamentsScreen> {
       final tournaments = await widget.apiClient.list();
       setState(() => _tournaments = tournaments);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) VuelFeedback.error(context, '$e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -38,46 +39,42 @@ class _TournamentsScreenState extends State<TournamentsScreen> {
   Future<void> _join(String tournamentId) async {
     try {
       await widget.apiClient.join(tournamentId);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inscription confirmée !')));
+      if (mounted) VuelFeedback.success(context, 'Inscription confirmée !');
       _refresh();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) VuelFeedback.error(context, '$e');
     }
   }
 
   Future<void> _startIfOrganizer(Map<String, dynamic> tournament) async {
     try {
       await widget.apiClient.start(tournament['id'] as String);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tournoi lancé !')));
+      if (mounted) VuelFeedback.success(context, 'Tournoi lancé !');
       _refresh();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) VuelFeedback.error(context, '$e');
     }
   }
 
   Future<void> _cancelIfOrganizer(Map<String, dynamic> tournament) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Annuler le tournoi ?'),
-        content: const Text('Tous les participants seront remboursés (mise recréditée sur leur wallet).'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Non')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Oui, annuler')),
-        ],
-      ),
+    final confirmed = await VuelFeedback.confirm(
+      context,
+      title: 'Annuler le tournoi ?',
+      message: 'Tous les participants seront remboursés (mise recréditée sur leur wallet).',
+      confirmLabel: 'Oui, annuler',
+      cancelLabel: 'Non',
+      danger: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     try {
       await widget.apiClient.cancel(tournament['id'] as String);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Tournoi annulé — tout le monde est remboursé.')));
+        VuelFeedback.success(context, 'Tournoi annulé — tout le monde est remboursé.');
       }
       _refresh();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) VuelFeedback.error(context, '$e');
     }
   }
 
@@ -130,8 +127,7 @@ class _TournamentsScreenState extends State<TournamentsScreen> {
     final stake = int.tryParse(stakeController.text) ?? _minStake;
     if (stake < _minStake) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('La mise minimum est de $_minStake F')));
+        VuelFeedback.warning(context, 'La mise minimum est de $_minStake F');
       }
       return;
     }
@@ -145,7 +141,7 @@ class _TournamentsScreenState extends State<TournamentsScreen> {
       );
       _refresh();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) VuelFeedback.error(context, '$e');
     }
   }
 
