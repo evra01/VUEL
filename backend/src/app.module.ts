@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bullmq';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -14,6 +15,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { TournamentsModule } from './tournaments/tournaments.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { BannersModule } from './banners/banners.module';
+import { WaveMonitorModule } from './wave-monitor/wave-monitor.module';
 import { PrismaService } from './common/prisma.service';
 import { AdminSeedService } from './common/admin-seed.service';
 
@@ -47,6 +49,9 @@ const bullModule = process.env.REDIS_HOST
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Requis par @Interval() dans WaveMonitorService (cf. wave-monitor.module.ts)
+    // — vérifie les paiements Wave reçus toutes les 30s.
+    ScheduleModule.forRoot(),
     ...bullModule,
     AuthModule,
     UsersModule,
@@ -61,6 +66,7 @@ const bullModule = process.env.REDIS_HOST
     TournamentsModule,
     NotificationsModule,
     BannersModule,
+    WaveMonitorModule,
   ],
   providers: [PrismaService, AdminSeedService],
 })

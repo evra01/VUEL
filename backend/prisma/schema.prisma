@@ -175,6 +175,41 @@ model PaymentConfig {
   // gardé pour un éventuel workflow externe alternatif.
   webhookSharedSecret String?
   updatedAt           DateTime @updatedAt
+
+  // --- Wave Monitor : identifiants du compte Wave Business + session persistée,
+  // pour valider AUTOMATIQUEMENT les dépôts (cf. WaveMonitorService), en plus
+  // de/à la place de la validation manuelle Telegram ci-dessus. Connexion via
+  // l'API interne GraphQL de Wave Business (celle utilisée par l'appli mobile
+  // Wave Business), pas l'API Wave Checkout officielle — à surveiller si Wave
+  // fait évoluer ce format, et attention aux conditions d'utilisation de Wave
+  // sur ce point.
+  waveMonitorEnabled   Boolean   @default(false)
+  waveBusinessPhone    String?
+  waveBusinessPin      String?   // jamais renvoyé en clair par l'API (cf. WaveMonitorService.getStatus)
+  waveBusinessDeviceId String?
+  waveSessionId        String?   // cookie de session Wave (sId) une fois connecté
+  waveWalletId         String?
+  waveSessionExpiresAt DateTime?
+  waveLoginTokenId     String?   // tokenId temporaire entre l'étape PIN et l'étape OTP
+  // --- Wave Monitor : connexion via navigateur distant (cf.
+  // WaveRemoteBrowserService) — alternative à waveBusinessPhone/waveBusinessPin
+  // ci-dessus : l'admin se connecte directement sur la vraie page Wave
+  // Business (PIN + OTP gérés par Wave, pas par nous), et on capture les
+  // cookies de la session obtenue. Copie brute de TOUS les cookies capturés
+  // (pas seulement "sId") : sert de filet de secours/débogage si le nom du
+  // cookie de session posé par le site web diffère de celui utilisé par
+  // l'API mobile (jamais vérifié en conditions réelles — cf. commentaire en
+  // tête de WaveRemoteBrowserService).
+  waveRemoteCookiesRaw Json?
+}
+
+// Anti-doublon persistant : IDs des paiements Wave déjà traités par le
+// monitor (cf. WaveMonitorService.checkAndValidate), pour ne jamais créditer
+// deux fois un même paiement même après un redémarrage du serveur (contexte
+// différent du fichier monitor_state.json de l'ancienne version standalone).
+model WaveSeenTransaction {
+  id        String   @id // ID de l'entrée dans l'historique Wave (walletHistory)
+  createdAt DateTime @default(now())
 }
 
 // Configuration SMS (OTP d'inscription), éditable uniquement via le back-office admin.
