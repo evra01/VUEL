@@ -108,11 +108,17 @@ seul.
    garde **tous** les cookies capturés dans le nouveau champ
    `PaymentConfig.waveRemoteCookiesRaw` en secours — à regarder en base après
    la première connexion si `getTodayIncomingPayments()` ne trouve rien.
-2. **Dépendance Playwright** : `npm install` télécharge maintenant Chromium
-   via le script `postinstall` (`playwright install --with-deps chromium`,
-   ~300 Mo) — vérifier que l'hébergeur (ex. Render) a assez d'espace disque
-   au build, et que le plan a assez de RAM pour faire tourner un Chromium
-   headless en plus du reste (prévoir au moins 512 Mo dédiés rien qu'à ça).
+2. **Dépendance Playwright — Chromium NON installé automatiquement sur le
+   serveur.** Le `postinstall` (`playwright install chromium`) a été retiré
+   de `package.json` pour que `npm install` reste léger sur l'hébergeur (pas
+   de téléchargement de ~300 Mo, pas de risque d'échec de build). Résultat :
+   cette section "navigateur distant" **ne fonctionne plus telle quelle en
+   production** tant que Chromium n'est pas installé à la main sur le
+   serveur (`npx playwright install --with-deps chromium`, avec les mêmes
+   soucis de droits root qu'expliqué plus bas). Si tu ne veux pas gérer ça
+   sur l'hébergeur, utilise plutôt la section suivante (connexion locale via
+   VS Code) — c'est fait pour ce cas précis, aucune installation côté
+   serveur n'est nécessaire.
 3. **Conditions d'utilisation Wave** : cette méthode fait interagir un
    navigateur automatisé avec le vrai site business.wave.com (pas juste
    l'API interne comme la section précédente) — même remarque que
@@ -142,6 +148,10 @@ pointée par `DATABASE_URL` (ton `.env`).
 
 ### Utilisation
 
+0. **Une seule fois**, dans le terminal intégré de VS Code (`cd backend`) :
+   `npm install` (léger — n'installe plus Chromium, voir plus bas) puis
+   `npm run browsers:install` (télécharge Chromium **uniquement sur ta
+   machine**, ~300 Mo, jamais sur le serveur).
 1. Onglet **Exécuter et déboguer** (icône ▷🐞 dans la barre latérale, ou
    `Ctrl+Maj+D`) → choisis **"Capturer session Wave (navigateur visible)"**
    dans le menu déroulant en haut → F5 (ou clic sur ▷).
@@ -151,11 +161,49 @@ pointée par `DATABASE_URL` (ton `.env`).
    un message apparaît dans le terminal intégré de VS Code. Si rien ne se
    passe après connexion, reviens dans ce terminal et appuie sur Entrée pour
    forcer la capture.
-4. Démarre (ou redémarre) le serveur normalement — `npm run start:dev` (ou
-   la config **"Lancer le serveur (start:dev)"**) — il relit la session
-   depuis la base au prochain cycle de `WaveMonitorService` (toutes les
-   30 s), pas besoin de le relancer si les deux tournent déjà en même temps.
+4. Le serveur en production relit la session depuis la base au prochain
+   cycle de `WaveMonitorService` (toutes les 30 s) — pas besoin de le
+   redémarrer.
 
-Nécessite `npm install` fait au moins une fois (installe `playwright`,
-`dotenv` et télécharge Chromium via le `postinstall`, cf. section
-précédente).
+**Important — vers quelle base écrit le script ?** Il utilise
+`DATABASE_URL` défini dans `backend/.env`, **en local sur ta machine**. Pour
+que la session capturée serve au serveur en production, ce `DATABASE_URL`
+local doit pointer vers la **même base Postgres que celle utilisée par
+l'hébergeur** (l'URL de connexion externe fournie par ton hébergeur de base
+de données — Render Postgres, Neon, Supabase... —, pas `localhost`). Vérifie
+aussi que la base accepte les connexions entrantes depuis ton IP (allowlist
+IP éventuelle côté hébergeur de la base).
+
+La session Wave dure ~20h (`SESSION_TTL_MS`) : il faut relancer ce script
+depuis VS Code à peu près à cette fréquence pour que la validation
+automatique des dépôts continue de fonctionner (un message Telegram
+t'alertera si la session expire, cf. `alertSessionExpiredOnce`).
+
+## Ne pas installer Chromium sur l'hébergeur (déploiement Node classique)
+
+Le `postinstall` qui lançait `playwright install chromium` à chaque
+`npm install` a été **retiré** de `package.json` — donc un déploiement
+classique (`npm install` puis `npm run build`, sans Docker) sur ton
+hébergeur ne télécharge plus Chromium du tout : build plus rapide, moins
+d'espace disque utilisé, moins de RAM consommée au runtime, et plus aucun
+risque de voir le déploiement échouer à cause de Chromium (droits `apt`
+manquants pour `--with-deps`, bibliothèques système absentes pour le faire
+tourner, etc. — ce sont précisément les soucis qu'on évite en ne l'installant
+plus côté serveur).
+
+Conséquence : l'écran back-office **"Alternative : connexion via navigateur
+distant"** (`WaveRemoteBrowserService`) ne fonctionnera plus sur ce serveur
+tant que Chromium n'y est pas installé à la main — ce qui est le compromis
+voulu ici. Utilise exclusivement la méthode **VS Code en local**
+ci-dessus pour capturer/renouveler la session Wave ; le reste (lecture de la
+session, matching des paiements, validation automatique) tourne côté
+serveur sans avoir besoin de Playwright ni de Chromium — `WaveSessionService`
+n'utilise qu'un simple `fetch()` vers l'API Wave.
+
+Si un jour tu veux réactiver le navigateur distant côté serveur, il faudra
+soit relancer manuellement `npx playwright install --with-deps chromium`
+sur l'hébergeur (peut échouer selon les droits disponibles), soit repasser
+en déploiement Docker avec le `Dockerfile` fourni à la racine du dépôt
+(basé sur `mcr.microsoft.com/playwright:v1.47.2-jammy`, qui embarque déjà
+Chromium et ses dépendances système) — mais ce n'est pas nécessaire pour le
+flux VS Code décrit ci-dessus.
