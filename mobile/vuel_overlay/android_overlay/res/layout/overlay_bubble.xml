@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Bulle flottante Vuel : cercle sombre avec anneau ambre, logo centré (rendu
+  circulaire par code, cf. OverlayBubbleService.showBubble — un ImageView seul
+  ne peut pas se découper en cercle proprement en XML sans API level minimum
+  garanti, RoundedBitmapDrawable est plus fiable).
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/bubble_root"
+    android:layout_width="64dp"
+    android:layout_height="64dp"
+    android:background="@drawable/bubble_ring"
+    android:padding="4dp"
+    android:elevation="8dp">
+
+    <ImageView
+        android:id="@+id/bubble_logo"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:scaleType="centerCrop"
+        android:contentDescription="Vuel" />
+
+</FrameLayout>

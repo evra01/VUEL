@@ -1,0 +1,374 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Game {
+  EFOOTBALL
+  CODM
+  LUDO
+}
+
+enum DuelStatus {
+  OPEN
+  IN_PROGRESS
+  AWAITING_PROOF
+  DISPUTED
+  COMPLETED
+  CANCELLED
+}
+
+enum TournamentStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAW
+  ESCROW_LOCK
+  ESCROW_RELEASE
+  COMMISSION
+  TOURNAMENT_ENTRY
+  TOURNAMENT_PAYOUT
+  REFUND
+}
+
+// Statuts génériques (dépôts, ajustements admin...). Pour les RETRAITS
+// spécifiquement, seuls PENDING ("En cours"), SUCCESS ("Effectué"),
+// CANCELLED ("Annulé") et OTHER ("Autre") sont utilisés côté back-office
+// (cf. AdminController withdrawals/*, WITHDRAW_STATUS_LABELS) — FAILED reste
+// réservé aux dépôts Wave rejetés (cf. WalletService.rejectDeposit).
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+  OTHER
+}
+
+enum DisputeStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+}
+
+enum KycStatus {
+  NONE
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum UserRole {
+  PLAYER
+  ARBITER
+  ADMIN
+}
+
+model User {
+  id             String    @id @default(uuid())
+  phone          String    @unique
+  pseudo         String    @unique
+  email          String?   @unique
+  avatarId       String?   // identifiant d'une icône prédéfinie fournie par l'app (pas de photo uploadée)
+  passwordHash   String
+  role           UserRole  @default(PLAYER)
+  deviceOs       String?
+  deviceBrand    String?
+  deviceModel    String?
+  kycStatus      KycStatus @default(NONE)
+  reputationScore Int      @default(100)
+  createdAt      DateTime  @default(now())
+
+  gamingIds      GamingId[]
+  wallet         Wallet?
+  duelsAsA       Duel[]     @relation("PlayerA")
+  duelsAsB       Duel[]     @relation("PlayerB")
+  proofs         ScreenshotProof[]
+  disputesFiled  Dispute[]  @relation("ReportedBy")
+  tournamentsOrganized  Tournament[]             @relation("TournamentOrganizer")
+  tournamentEntries     TournamentParticipant[]
+}
+
+model GamingId {
+  id         String  @id @default(uuid())
+  userId     String
+  user       User    @relation(fields: [userId], references: [id])
+  game       Game
+  gamePseudo String
+  favoriteTeam String?
+  verified   Boolean @default(false)
+
+  @@unique([userId, game])
+}
+
+model Wallet {
+  id               String  @id @default(uuid())
+  userId           String  @unique
+  user             User    @relation(fields: [userId], references: [id])
+  balanceAvailable Int     @default(0) // en FCFA (entier, pas de flottant)
+  balanceLocked    Int     @default(0)
+
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String             @id @default(uuid())
+  walletId    String
+  wallet      Wallet             @relation(fields: [walletId], references: [id])
+  type        TransactionType
+  amount      Int
+  provider    String?
+  externalRef String?            // ID de la session Wave Checkout (workflow API, désormais inactif par défaut)
+  // Numéro de téléphone saisi par le joueur avant de payer, pour un dépôt via
+  // le lien Wave fixe (cf. PaymentConfig.waveDepositLink) — permet à l'admin
+  // de retrouver le paiement reçu sur le compte Wave Business avant de
+  // valider manuellement (cf. WalletService.approveDeposit /
+  // TelegramCommandsService, boutons de décision "dep:ok" / "dep:no").
+  // Sans objet pour l'ancien workflow Wave Checkout (webhook auto).
+  payerPhone  String?
+  status      TransactionStatus  @default(PENDING)
+  // Note libre laissée par l'admin en traitant la transaction (surtout utile
+  // pour les retraits marqués "Autre", cf. MarkWithdrawalOtherDto) — jamais
+  // renseignée automatiquement.
+  adminNote   String?
+  createdAt   DateTime           @default(now())
+
+  // listDeposits()/listWithdrawals() côté admin filtrent par (type, provider)
+  // ou (type) sur potentiellement toutes les transactions de tous les
+  // utilisateurs — walletId seul sert à getTransactions() (historique d'un
+  // joueur, cf. WalletService).
+  @@index([walletId])
+  @@index([type, status])
+}
+
+// Configuration des paiements, éditable uniquement via le back-office admin
+// (cf. AdminController) — ligne unique en base (id fixe "singleton").
+model PaymentConfig {
+  id                  String   @id @default("singleton")
+  // --- Lien Wave fixe + validation manuelle (mode actif par défaut, cf.
+  // WalletService.deposit) : un lien de paiement Wave que l'admin configure
+  // une fois (ex: https://pay.wave.com/m/M_xxx/c/ci/), sans clé API Wave
+  // Business. Le joueur saisit son numéro, on lui ouvre ce lien (+ montant en
+  // query param), et un admin valide manuellement le dépôt depuis Telegram
+  // une fois le paiement vérifié sur le compte Wave (mêmes boutons de
+  // décision que l'arbitrage des duels, cf. TelegramNotifierService).
+  waveDepositLink     String?
+  // --- Wave Checkout via API (clé API Wave Business + webhook auto) : conservé
+  // pour réactivation future si besoin, mais N'EST PLUS utilisé par le flux de
+  // dépôt actuel (cf. décision produit : lien fixe + validation manuelle,
+  // comme Espace Parent). Voir WavePaymentService / WaveWebhookController.
+  waveApiKey          String?  // clé secrète Wave Checkout — jamais renvoyée en clair par l'API
+  waveApiBaseUrl      String   @default("https://api.wave.com/v1")
+  successUrl          String   @default("https://vuel.app/payment/success")
+  errorUrl            String   @default("https://vuel.app/payment/error")
+  // Secret partagé attendu dans le header X-Webhook-Secret des appels entrants sur
+  // /webhooks/payment-confirmation (ex: depuis un workflow externe de vérification
+  // type n8n/Make/Zapier) — inutilisé par le flux de validation manuelle Telegram,
+  // gardé pour un éventuel workflow externe alternatif.
+  webhookSharedSecret String?
+  updatedAt           DateTime @updatedAt
+}
+
+// Configuration SMS (OTP d'inscription), éditable uniquement via le back-office admin.
+// Provider fixé à Twilio pour l'instant — mêmes principes que PaymentConfig (secret
+// jamais renvoyé en clair, ligne unique en base).
+model SmsConfig {
+  id                String   @id @default("singleton")
+  twilioAccountSid  String?
+  twilioAuthToken   String?
+  twilioFromNumber  String?
+  updatedAt         DateTime @updatedAt
+}
+
+// Configuration SMTP (envoi du code OTP par email, en doublon du SMS), éditable
+// uniquement via le back-office admin. Même principe que SmsConfig : ligne
+// unique en base, mot de passe jamais renvoyé en clair par l'API.
+model EmailConfig {
+  id           String   @id @default("singleton")
+  smtpHost     String?
+  smtpPort     Int?     @default(587)
+  // true = TLS implicite (port 465). false = STARTTLS (port 587, cas le plus courant).
+  smtpSecure   Boolean  @default(false)
+  smtpUser     String?
+  smtpPassword String?
+  // Adresse affichée comme expéditeur. Beaucoup de fournisseurs exigent qu'elle
+  // corresponde au compte smtpUser, sinon le message part en spam (ou est refusé).
+  fromEmail    String?
+  fromName     String?  @default("Vuel")
+  updatedAt    DateTime @updatedAt
+}
+
+model Duel {
+  id          String     @id @default(uuid())
+  game        Game
+  mode        String
+  stakeAmount Int
+  status      DuelStatus @default(OPEN)
+
+  // Code court unique du salon (6 caractères, ex: "K7QX2M") — affiché/partagé
+  // à la place de l'UUID technique `id` pour que le lien d'invitation et la
+  // saisie manuelle dans "Rejoindre avec un code" restent simples (cf.
+  // DuelsService.generateJoinCode, DuelInviteController). Nullable pour
+  // rester compatible avec les duels déjà en base créés avant l'ajout de ce
+  // champ (repli sur `id` dans ce cas côté DuelInviteController).
+  joinCode  String?    @unique
+
+  playerAId String
+  playerA   User   @relation("PlayerA", fields: [playerAId], references: [id])
+  playerBId String?
+  playerB   User?  @relation("PlayerB", fields: [playerBId], references: [id])
+  winnerId  String?
+
+  // Nom d'équipe saisi dans le formulaire par chaque joueur pour CE duel
+  // (playerATeam à la création, playerBTeam en rejoignant) — utilisé en
+  // priorité par OcrProcessor pour faire correspondre les équipes détectées
+  // sur la capture d'écran à chaque joueur, plus fiable qu'une convention de
+  // position gauche/droite. Nullable car les duels créés avant l'ajout de ce
+  // champ n'en ont pas (repli sur GamingId.favoriteTeam dans ce cas), et
+  // playerBTeam reste vide tant que le second joueur n'a pas rejoint.
+  playerATeam String?
+  playerBTeam String?
+
+  // Rempli uniquement si ce duel est un match de bracket de tournoi — dans ce cas
+  // il n'a pas son propre escrow (les mises ont déjà été collectées à l'inscription
+  // au tournoi, cf. Tournament/TournamentParticipant) : DuelsService.start()/complete()
+  // et EscrowService court-circuitent leur logique habituelle quand tournamentId est non-nul.
+  tournamentId      String?
+  tournament        Tournament? @relation(fields: [tournamentId], references: [id])
+  tournamentRound   Int?
+
+  createdAt DateTime @default(now())
+
+  escrow  Escrow?
+  proofs  ScreenshotProof[]
+  dispute Dispute?
+
+  // Filtré en permanence : listOpen()/listForAdmin() (par statut) et
+  // listMine() (par joueur + statut) — cf. DuelsService. Sans index, chacun
+  // de ces appels (très fréquents : écran "Jouer" à chaque ouverture) fait un
+  // balayage complet de la table à mesure qu'elle grossit.
+  @@index([status])
+  @@index([playerAId, status])
+  @@index([playerBId, status])
+}
+
+model Escrow {
+  id             String    @id @default(uuid())
+  duelId         String    @unique
+  duel           Duel      @relation(fields: [duelId], references: [id])
+  amountLocked   Int
+  commissionRate Float     @default(0.10)
+  releasedAt     DateTime?
+}
+
+// Tournoi organisé par n'importe quel joueur (pas seulement un admin) — mise minimum
+// 200 FCFA (cf. décision produit). Bracket à élimination directe : chaque match est
+// un Duel classique (tournamentId renseigné), sans escrow individuel puisque les
+// mises sont déjà collectées dans prizePool à l'inscription.
+model Tournament {
+  id               String           @id @default(uuid())
+  name             String
+  game             Game
+  stakeAmount      Int              // minimum 200 FCFA, validé côté DTO
+  maxParticipants  Int
+  status           TournamentStatus @default(OPEN)
+  prizePool        Int              @default(0) // somme des mises collectées
+  commissionRate   Float            @default(0.10)
+
+  organizerId String
+  organizer   User   @relation("TournamentOrganizer", fields: [organizerId], references: [id])
+  winnerId    String?
+
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  participants TournamentParticipant[]
+  duels        Duel[]
+}
+
+model TournamentParticipant {
+  id           String     @id @default(uuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id])
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  eliminated   Boolean    @default(false)
+  joinedAt     DateTime   @default(now())
+
+  @@unique([tournamentId, userId])
+}
+
+model ScreenshotProof {
+  id             String   @id @default(uuid())
+  duelId         String
+  duel           Duel     @relation(fields: [duelId], references: [id])
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  // La capture elle-même n'est JAMAIS stockée ici (ni ailleurs en base/S3) :
+  // elle est relayée directement vers Telegram (cf. TelegramNotifierService)
+  // et vit uniquement là-bas. On garde seulement l'id du message Telegram
+  // correspondant — utile pour qu'un admin retrouve la photo d'origine, et
+  // pour router les commandes d'arbitrage envoyées en réponse à ce message
+  // (cf. TelegramCommandsService).
+  telegramMessageId Int?
+  // file_id renvoyé par l'API Telegram avec le message (cf. sendCapturePhoto)
+  // — permet de re-télécharger l'image à la demande via getFile pour
+  // l'afficher dans la page admin (cf. AdminProofsController), SANS dupliquer
+  // le stockage : Telegram reste la seule copie durable, on ne fait que la
+  // relire à la volée quand un admin veut la voir.
+  telegramFileId String?
+  ocrRawResult   String?
+  ocrScoreDetected String?
+  ocrTeamsDetected String?
+  ocrConfidence  Float?
+  submittedAt    DateTime @default(now())
+}
+
+model Dispute {
+  id         String        @id @default(uuid())
+  duelId     String        @unique
+  duel       Duel          @relation(fields: [duelId], references: [id])
+  reportedById String
+  reportedBy User          @relation("ReportedBy", fields: [reportedById], references: [id])
+  reason     String
+  status     DisputeStatus @default(OPEN)
+  resolution String?
+  arbiterId  String?
+  resolvedAt DateTime?
+  createdAt  DateTime      @default(now())
+
+  // listOpen() (DisputesService) filtre en permanence sur le statut pour
+  // afficher la file d'attente des litiges à traiter.
+  @@index([status])
+}
+
+// Bannières promo affichées en haut de l'écran d'accueil de l'app (cf.
+// AccueilTab côté mobile). Même principe que ScreenshotProof : l'image n'est
+// JAMAIS stockée ici (ni DB, ni S3) — elle est envoyée à Telegram au moment
+// de l'upload depuis la page admin (cf. AdminBannersController), et
+// retéléchargée à la volée pour l'affichage (cf. BannersController.getImage,
+// TelegramNotifierService.getProofImage). Telegram reste la seule copie
+// durable de l'image elle-même.
+model Banner {
+  id                String   @id @default(uuid())
+  telegramFileId    String
+  telegramMessageId Int?
+  // Où envoyer l'utilisateur s'il tape sur la bannière (ex: lien vers un
+  // tournoi, une promo externe...) — optionnel, une bannière purement
+  // informative n'a pas besoin de lien.
+  linkUrl           String?
+  active            Boolean  @default(true)
+  // Ordre d'affichage dans le carrousel (croissant) — modifiable depuis la
+  // page admin sans avoir à ré-uploader l'image.
+  order             Int      @default(0)
+  createdAt         DateTime @default(now())
+}
