@@ -19,6 +19,7 @@
 // Utilisation (dans VS Code, terminal, depuis le dossier vuel/backend) :
 //   npm install                      (une seule fois, si pas déjà fait)
 //   npx playwright install chromium  (une seule fois, télécharge Chromium)
+//   $env:VUEL_SERVER_URL="https://vuel.onrender.com"
 //   $env:VUEL_ADMIN_TOKEN="...ton accessToken admin (cf. POST /auth/login)..."
 //   node scripts/local-wave-login.js
 //
