@@ -76,6 +76,20 @@ async function main() {
   console.log('[deploy] npx prisma migrate deploy');
   execSync('npx prisma migrate deploy', { stdio: 'inherit' });
 
+  // Chromium pour WaveRemoteBrowserService (navigateur distant piloté par
+  // l'admin) — ~300 Mo à télécharger, ce qui peut être lourd/lent sur le
+  // plan gratuit Render (RAM et disque limités). Non-bloquant : si ça
+  // échoue (quota dépassé, timeout...), on continue le déploiement sans
+  // cette fonctionnalité plutôt que de faire échouer tout le build ; le
+  // reste de l'app (webhooks, WaveSessionService méthode PIN, etc.) n'en
+  // dépend pas.
+  try {
+    console.log('[deploy] npx playwright install --with-deps chromium');
+    execSync('npx playwright install --with-deps chromium', { stdio: 'inherit' });
+  } catch (e) {
+    console.warn('[deploy] Installation de Chromium (Playwright) échouée — WaveRemoteBrowserService ne fonctionnera pas, mais le reste du déploiement continue.', e.message);
+  }
+
   console.log('[deploy] nest build');
   execSync('npx nest build', { stdio: 'inherit' });
 }

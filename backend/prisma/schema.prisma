@@ -223,6 +223,15 @@ model WaveMonitorStatus {
 // Configuration SMS (OTP d'inscription), éditable uniquement via le back-office admin.
 // Provider fixé à Twilio pour l'instant — mêmes principes que PaymentConfig (secret
 // jamais renvoyé en clair, ligne unique en base).
+// Table de déduplication pour WaveMonitorService : chaque paiement Wave déjà
+// traité (id de la transaction côté Wave) y est enregistré une fois pour
+// éviter de le notifier/valider deux fois si le monitor tourne en boucle sur
+// le même historique de paiements récents.
+model WaveSeenTransaction {
+  id     String   @id // id de la transaction côté Wave (walletHistory.historyEntries[].id)
+  seenAt DateTime @default(now())
+}
+
 model SmsConfig {
   id                String   @id @default("singleton")
   twilioAccountSid  String?
