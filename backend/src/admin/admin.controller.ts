@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -5,6 +6,7 @@ import { Roles, RolesGuard } from '../common/guards/roles.guard';
 import { PrismaService } from '../common/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 import { DuelsService } from '../duels/duels.service';
+import { PaymentConfigService } from '../payments/payment-config.service';
 import { WITHDRAWAL_STATUS_LABELS, withdrawalStatusLabel } from '../wallet/withdrawal-status.util';
 import { AdjustWalletDto, MarkWithdrawalOtherDto, SetUserRoleDto } from './dto/admin.dto';
 
@@ -18,6 +20,7 @@ export class AdminController {
     private prisma: PrismaService,
     private walletService: WalletService,
     private duelsService: DuelsService,
+    private paymentConfig: PaymentConfigService,
   ) {}
 
   @Get('users')
@@ -92,6 +95,42 @@ export class AdminController {
       pendingWithdrawals,
       pendingDeposits,
     };
+  }
+
+  // État du monitor externe vuel_wave_monitor.py (cf. WaveMonitorStatus,
+  // alimenté par POST /webhooks/payment-confirmation/heartbeat) — la page
+  // "Wave Monitor" du back-office s'en sert pour afficher si le script tourne
+  // encore (lastSeenAt récent = OK) plutôt que de le découvrir seulement
+  // quand des dépôts s'accumulent en PENDING sans être validés.
+  @Get('wave-monitor')
+  async waveMonitorStatus() {
+    const [status, pendingDeposits, config] = await Promise.all([
+      this.prisma.waveMonitorStatus.findUnique({ where: { id: 'singleton' } }),
+      this.prisma.transaction.count({ where: { type: 'DEPOSIT', provider: 'wave', status: 'PENDING' } }),
+      this.paymentConfig.getMasked(),
+    ]);
+    return {
+      configured: config.webhookSharedSecretConfigured,
+      lastSeenAt: status?.lastSeenAt ?? null,
+      waveSessionActive: status?.waveSessionActive ?? false,
+      waveExpiresAt: status?.waveExpiresAt ?? null,
+      lastCycleValidated: status?.lastCycleValidated ?? 0,
+      totalValidated: status?.totalValidated ?? 0,
+      lastError: status?.lastError ?? null,
+      pendingDeposits,
+    };
+  }
+
+  // Génère un nouveau secret partagé et l'enregistre directement (remplace
+  // l'ancien) — renvoyé UNE SEULE fois en clair dans cette réponse, à copier
+  // immédiatement dans la variable d'environnement VUEL_WEBHOOK_SECRET du
+  // monitor (cf. vuel_wave_monitor.py). Ensuite, comme tout secret,
+  // GET /admin/payment-config ne renvoie plus que webhookSharedSecretConfigured: true.
+  @Post('wave-monitor/generate-secret')
+  async generateWaveMonitorSecret() {
+    const secret = randomBytes(24).toString('hex');
+    await this.paymentConfig.update({ webhookSharedSecret: secret });
+    return { webhookSharedSecret: secret };
   }
 
   // Liste des demandes de dépôt Wave (lien fixe + validation manuelle, cf.

@@ -101,7 +101,10 @@ class _HomeShellState extends State<HomeShell> {
       bottomNavigationBar: VuelFloatingNavBar(
         currentIndex: _index,
         onTap: _goTo,
-        logoAsset: GameLogos.vuel,
+        // vuelMark (icône seule) plutôt que vuel_logo.png : ce dernier contient
+        // le mot "Vuel" et le slogan, illisibles une fois recadrés dans le
+        // petit cercle de la nav bar (cf. VuelFloatingNavBar > ClipOval).
+        logoAsset: GameLogos.vuelMark,
         items: const [
           VuelNavItem(icon: Icons.home_rounded, label: 'Accueil'),
           VuelNavItem(icon: Icons.sports_esports_rounded, label: 'Jouer'),

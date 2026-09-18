@@ -7,10 +7,6 @@
 <meta name="theme-color" content="#0a0a0a">
 <link rel="icon" href="icons/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<!-- Client socket.io (même version que le back-end, cf. package.json) — utilisé
-     uniquement par l'écran Wave Monitor pour piloter le navigateur distant
-     (cf. WaveRemoteBrowserGateway). -->
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <style>
   :root {
     --bg: #0a0a0a; --surface: #141414; --surface-2: #1a1a1a;
@@ -168,8 +164,8 @@
     <div class="navlink" data-page="proofs" onclick="showPage('proofs')">📸 Preuves</div>
     <div class="navlink" data-page="disputes" onclick="showPage('disputes')">⚖️ Litiges</div>
     <div class="navlink" data-page="payment" onclick="showPage('payment')" style="display:flex;align-items:center;gap:8px;"><img src="data:image/png;base64,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" style="width:18px;height:18px;border-radius:4px;object-fit:cover;" alt="Wave">Paiement (Wave)</div>
-    <div class="navlink" data-page="sms" onclick="showPage('sms')">📱 SMS (Twilio)</div>
     <div class="navlink" data-page="wavemonitor" onclick="showPage('wavemonitor')">🌊 Wave Monitor</div>
+    <div class="navlink" data-page="sms" onclick="showPage('sms')">📱 SMS (Twilio)</div>
     <div class="navlink" data-page="email" onclick="showPage('email')">✉️ Email (SMTP)</div>
     <div class="spacer"></div>
     <div class="logout-link" onclick="doLogout()">Se déconnecter</div>
@@ -324,6 +320,42 @@
       </div>
     </div>
 
+    <div class="page" id="page-wavemonitor">
+      <div class="page-title">Wave Monitor</div>
+      <div class="hint" style="margin-bottom:14px;">
+        Statut du script externe <code>vuel_wave_monitor.py</code>, qui détecte automatiquement les paiements
+        Wave reçus et valide les dépôts en attente sans intervention manuelle. Tant qu'il tourne (terminal
+        ouvert ou déployé quelque part), tu n'as normalement plus besoin d'approuver les dépôts un par un
+        depuis la page "Dépôts".
+      </div>
+
+      <div class="stat-grid" id="waveMonitorGrid">
+        <div class="stat-card"><div class="label">Chargement…</div></div>
+      </div>
+
+      <div class="card" id="waveMonitorErrorCard" style="display:none;">
+        <div class="title">Dernière erreur signalée par le monitor</div>
+        <div class="meta" id="waveMonitorErrorText"></div>
+      </div>
+
+      <div class="page-title" style="margin-top:28px;">Secret webhook</div>
+      <div class="card">
+        <div class="hint" style="margin-bottom:10px;">
+          Le monitor s'authentifie avec ce secret (header <code>X-Webhook-Secret</code>) — la même valeur doit
+          être renseignée dans la variable d'environnement <code>VUEL_WEBHOOK_SECRET</code> du script. Tu peux
+          aussi le régler manuellement depuis la page "Paiement (Wave)".
+        </div>
+        <div class="hint" id="waveMonitorSecretStatus"></div>
+        <button class="small amber" style="margin-top:12px;" onclick="generateWaveMonitorSecret()">Générer un nouveau secret</button>
+        <div id="waveMonitorSecretReveal" style="display:none; margin-top:14px;">
+          <label>Nouveau secret (affiché une seule fois — copie-le maintenant)</label>
+          <input type="text" id="waveMonitorSecretValue" readonly onclick="this.select()">
+          <div class="hint">⚠️ Générer un nouveau secret invalide l'ancien : mets à jour <code>VUEL_WEBHOOK_SECRET</code>
+            côté monitor et relance-le, sinon il ne pourra plus valider les dépôts.</div>
+        </div>
+      </div>
+    </div>
+
     <div class="page" id="page-sms">
       <div class="page-title">Configuration SMS (Twilio)</div>
       <div class="card">
@@ -339,78 +371,6 @@
         <input type="text" id="twilioFromNumber" placeholder="+1...">
 
         <button class="primary" style="margin-top:20px;" onclick="saveSmsConfig()">Enregistrer</button>
-      </div>
-    </div>
-
-    <div class="page" id="page-wavemonitor">
-      <div class="page-title">🌊 Wave Monitor — validation automatique des dépôts</div>
-      <div class="card">
-        <div class="hint" style="margin-bottom:10px;">
-          Se connecte au compte Wave Business pour détecter automatiquement les paiements reçus et créditer
-          les dépôts en attente (sans attendre un clic admin sur Telegram). La validation manuelle Telegram
-          reste disponible en secours si un paiement n'est pas reconnu automatiquement.
-        </div>
-        <div class="hint" id="waveMonitorStatus" style="margin-bottom:16px;"></div>
-
-        <label>Numéro du compte Wave Business</label>
-        <input type="text" id="wmBusinessPhone" placeholder="+2250102030405">
-
-        <label>PIN Wave Business</label>
-        <div class="password-field">
-          <input type="password" id="wmBusinessPin" placeholder="Laisser vide pour ne pas changer">
-          <span class="password-toggle" onclick="togglePasswordVisibility('wmBusinessPin', this)">👁️</span>
-        </div>
-
-        <label>Identifiant d'appareil (optionnel — sinon généré automatiquement)</label>
-        <input type="text" id="wmDeviceId" placeholder="ex: vuel-server-01">
-
-        <button class="primary" style="margin-top:20px;" onclick="saveWaveMonitorConfig()">Enregistrer</button>
-      </div>
-
-      <div class="page-title" style="margin-top:28px;">Connexion au compte Wave</div>
-      <div class="card">
-        <div class="hint" style="margin-bottom:14px;" id="waveMonitorSessionHint">
-          Étape 1 : vérifie le PIN et envoie un code par SMS au numéro Wave Business ci-dessus.
-        </div>
-        <button class="primary" onclick="startWaveMonitorLogin()">📲 Se connecter (envoyer le code SMS)</button>
-
-        <label style="margin-top:20px;">Code reçu par SMS</label>
-        <input type="text" id="wmOtp" placeholder="123456">
-        <button class="primary" style="margin-top:12px;" onclick="submitWaveMonitorOtp()">✅ Valider le code</button>
-      </div>
-
-      <div class="page-title" style="margin-top:28px;">Alternative : connexion via navigateur distant</div>
-      <div class="card">
-        <div class="hint" style="margin-bottom:14px;">
-          Au lieu de saisir le PIN Wave Business ci-dessus, connecte-toi directement sur la vraie page Wave
-          Business ci-dessous (PIN + code SMS gérés par Wave lui-même) — le serveur récupère automatiquement
-          les cookies de session dès que la connexion réussit.
-          <br><br>
-          ⚠️ Nécessite Chromium installé <strong>sur le serveur</strong> (Playwright) — plus installé
-          automatiquement par <code>npm install</code> depuis ce changement, pour ne pas alourdir
-          l'hébergeur. Si tu captures la session depuis VS Code en local (recommandé, cf.
-          <code>WAVE_MONITOR_CHANGES.md</code>), ignore complètement cette section.
-        </div>
-        <div class="hint" id="wmRemoteHint" style="margin-bottom:12px;">Navigateur distant arrêté.</div>
-
-        <div id="wmRemoteWrap" style="display:none; position:relative; border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:14px; cursor:default; background:#000;">
-          <img id="wmRemoteFrame" style="display:block; width:100%; height:auto; user-select:none;" draggable="false">
-        </div>
-
-        <button class="primary" id="wmRemoteStartBtn" onclick="startWaveRemoteBrowser()">🖥️ Démarrer le navigateur distant</button>
-        <button class="primary" id="wmRemoteConfirmBtn" style="margin-top:12px; display:none;" onclick="confirmWaveRemoteLogin()">✅ J'ai terminé ma connexion — capturer maintenant</button>
-        <button style="margin-top:12px; display:none; background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:12px; width:100%; cursor:pointer;" id="wmRemoteStopBtn" onclick="stopWaveRemoteBrowser()">✖️ Fermer le navigateur distant</button>
-      </div>
-
-      <div class="page-title" style="margin-top:28px;">Activation</div>
-      <div class="card">
-        <div class="hint" style="margin-bottom:14px;">
-          À activer seulement une fois la connexion réussie ci-dessus (statut "session active" en haut de page).
-        </div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text);">
-          <input type="checkbox" id="wmEnabled" style="width:auto;" onchange="toggleWaveMonitorEnabled()">
-          Activer la validation automatique des dépôts Wave
-        </label>
       </div>
     </div>
 
@@ -1303,179 +1263,71 @@ async function savePaymentConfig() {
   }
 }
 
+function relativeTimeFr(iso) {
+  if (!iso) return null;
+  const diffSec = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diffSec < 60) return `il y a ${diffSec}s`;
+  if (diffSec < 3600) return `il y a ${Math.round(diffSec / 60)} min`;
+  if (diffSec < 86400) return `il y a ${Math.round(diffSec / 3600)} h`;
+  return `il y a ${Math.round(diffSec / 86400)} j`;
+}
+
 async function loadWaveMonitor() {
+  const grid = document.getElementById('waveMonitorGrid');
   try {
-    const s = await api('/admin/wave-monitor/status');
-    document.getElementById('wmBusinessPhone').value = s.businessPhone || '';
-    document.getElementById('wmDeviceId').value = s.businessDeviceId || '';
-    document.getElementById('wmEnabled').checked = !!s.enabled;
-    const parts = [];
-    parts.push(s.sessionActive ? '🟢 Session Wave active' + (s.expiresAt ? (' (expire le ' + new Date(s.expiresAt).toLocaleString('fr-FR') + ')') : '') : '🔴 Session Wave inactive');
-    parts.push(s.pendingOtp ? '📲 Code OTP en attente de saisie' : null);
-    parts.push(s.enabled ? '✅ Validation automatique activée' : '⏸️ Validation automatique désactivée');
-    document.getElementById('waveMonitorStatus').textContent = parts.filter(Boolean).join(' — ');
+    const s = await api('/admin/wave-monitor');
+
+    // Considéré "en ligne" si un heartbeat est arrivé il y a moins de 2 min
+    // (le monitor envoie toutes les 30s — au-delà, le script est probablement
+    // arrêté ou ne peut plus joindre le serveur).
+    const seenAgo = s.lastSeenAt ? (Date.now() - new Date(s.lastSeenAt).getTime()) / 1000 : null;
+    const online = seenAgo !== null && seenAgo < 120;
+
+    grid.innerHTML = `
+      <div class="stat-card ${online ? '' : 'red'}">
+        <div class="label">Monitor</div>
+        <div class="value">
+          <span class="badge ${online ? 'green' : 'red'}">${online ? '🟢 En ligne' : '🔴 Hors ligne'}</span>
+        </div>
+        <div class="meta" style="margin-top:6px;">${s.lastSeenAt ? 'Dernier signal ' + relativeTimeFr(s.lastSeenAt) : 'Aucun signal reçu pour l\\'instant'}</div>
+      </div>
+      <div class="stat-card ${s.waveSessionActive ? '' : 'amber'}">
+        <div class="label">Session Wave</div>
+        <div class="value"><span class="badge ${s.waveSessionActive ? 'green' : 'amber'}">${s.waveSessionActive ? 'Active' : 'Inactive'}</span></div>
+        <div class="meta" style="margin-top:6px;">${s.waveExpiresAt ? 'Expire ' + relativeTimeFr(s.waveExpiresAt).replace('il y a', 'dans') : ''}</div>
+      </div>
+      <div class="stat-card"><div class="label">Validés (dernier cycle)</div><div class="value">${s.lastCycleValidated}</div></div>
+      <div class="stat-card"><div class="label">Validés au total</div><div class="value">${s.totalValidated}</div></div>
+      <div class="stat-card ${s.pendingDeposits > 0 ? 'amber' : ''}"><div class="label">Dépôts en attente</div><div class="value">${s.pendingDeposits}</div></div>
+    `;
+
+    const errorCard = document.getElementById('waveMonitorErrorCard');
+    if (s.lastError) {
+      errorCard.style.display = 'block';
+      document.getElementById('waveMonitorErrorText').textContent = s.lastError;
+    } else {
+      errorCard.style.display = 'none';
+    }
+
+    document.getElementById('waveMonitorSecretStatus').textContent =
+      s.configured ? '✓ Secret webhook configuré' : '⚠️ Aucun secret configuré — le monitor ne pourra pas s\\'authentifier.';
   } catch (e) {
-    showToast(e.message, 'error');
+    grid.innerHTML = `<div class="stat-card red"><div class="label">Erreur</div><div class="value" style="font-size:14px;">${e.message}</div></div>`;
   }
 }
 
-async function saveWaveMonitorConfig() {
-  const payload = {
-    businessPhone: document.getElementById('wmBusinessPhone').value.trim(),
-    deviceId: document.getElementById('wmDeviceId').value.trim(),
-  };
-  const pin = document.getElementById('wmBusinessPin').value.trim();
-  if (pin) payload.businessPin = pin;
-
+async function generateWaveMonitorSecret() {
+  if (!confirm("Générer un nouveau secret invalide l'ancien : le monitor en cours d'exécution ne pourra plus valider de dépôts tant que VUEL_WEBHOOK_SECRET n'est pas mis à jour côté script. Continuer ?")) return;
   try {
-    await api('/admin/wave-monitor/config', { method: 'POST', body: JSON.stringify(payload) });
-    showToast('Configuration enregistrée', 'success');
-    document.getElementById('wmBusinessPin').value = '';
+    const res = await api('/admin/wave-monitor/generate-secret', { method: 'POST' });
+    document.getElementById('waveMonitorSecretReveal').style.display = 'block';
+    document.getElementById('waveMonitorSecretValue').value = res.webhookSharedSecret;
+    document.getElementById('waveMonitorSecretValue').select();
+    showToast('Nouveau secret généré — copie-le maintenant', 'success');
     loadWaveMonitor();
   } catch (e) {
     showToast(e.message, 'error');
   }
-}
-
-async function startWaveMonitorLogin() {
-  try {
-    const res = await api('/admin/wave-monitor/login', { method: 'POST' });
-    showToast(res.message, res.ok ? 'success' : 'error');
-    if (res.ok) document.getElementById('waveMonitorSessionHint').textContent = 'Code SMS envoyé — saisis-le ci-dessous puis valide.';
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
-}
-
-async function submitWaveMonitorOtp() {
-  const otp = document.getElementById('wmOtp').value.trim();
-  try {
-    const res = await api('/admin/wave-monitor/otp', { method: 'POST', body: JSON.stringify({ otp }) });
-    showToast(res.message, res.ok ? 'success' : 'error');
-    if (res.ok) document.getElementById('wmOtp').value = '';
-    loadWaveMonitor();
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
-}
-
-async function toggleWaveMonitorEnabled() {
-  const enabled = document.getElementById('wmEnabled').checked;
-  try {
-    await api('/admin/wave-monitor/config', { method: 'POST', body: JSON.stringify({ enabled }) });
-    showToast(enabled ? 'Validation automatique activée' : 'Validation automatique désactivée', 'success');
-    loadWaveMonitor();
-  } catch (e) {
-    showToast(e.message, 'error');
-    document.getElementById('wmEnabled').checked = !enabled; // revert visuel si l'appel a échoué
-  }
-}
-
-// --- Wave Monitor : connexion via navigateur distant (cf.
-// WaveRemoteBrowserGateway) — affiche en direct la vraie page Wave Business
-// pilotée par un Chromium headless côté serveur, et relaie les clics/frappes
-// de l'admin vers cette page. Dimensions fixes (cf. viewport défini côté
-// serveur dans WaveRemoteBrowserService.start) pour convertir correctement
-// les coordonnées écran → coordonnées de la page distante.
-const WM_REMOTE_WIDTH = 1366;
-const WM_REMOTE_HEIGHT = 768;
-let wmRemoteSocket = null;
-
-function wmRemoteSetButtons(state) {
-  // state: 'idle' | 'connecting' | 'running'
-  document.getElementById('wmRemoteStartBtn').style.display = state === 'idle' ? '' : 'none';
-  document.getElementById('wmRemoteConfirmBtn').style.display = state === 'running' ? '' : 'none';
-  document.getElementById('wmRemoteStopBtn').style.display = state === 'idle' ? 'none' : '';
-  document.getElementById('wmRemoteWrap').style.display = state === 'idle' ? 'none' : '';
-}
-
-function startWaveRemoteBrowser() {
-  if (wmRemoteSocket) return;
-  document.getElementById('wmRemoteHint').textContent = 'Démarrage du navigateur distant…';
-  wmRemoteSetButtons('connecting');
-
-  wmRemoteSocket = io(apiBase() + '/wave-remote', { auth: { token: getToken() }, transports: ['websocket'] });
-
-  wmRemoteSocket.on('connect_error', () => {
-    document.getElementById('wmRemoteHint').textContent = 'Connexion refusée (session admin expirée ?).';
-    stopWaveRemoteBrowser();
-  });
-
-  wmRemoteSocket.on('started', () => {
-    document.getElementById('wmRemoteHint').textContent = 'Navigateur distant en cours — connecte-toi sur la page Wave affichée ci-dessous.';
-    wmRemoteSetButtons('running');
-  });
-
-  wmRemoteSocket.on('frame', (frame) => {
-    document.getElementById('wmRemoteFrame').src = 'data:image/jpeg;base64,' + frame.data;
-  });
-
-  wmRemoteSocket.on('captured', (info) => {
-    showToast(info.hasSId === false
-      ? 'Cookies enregistrés, mais pas de cookie "sId" trouvé — vérifie en base.'
-      : 'Session Wave capturée avec succès !', info.hasSId === false ? 'error' : 'success');
-    document.getElementById('wmRemoteHint').textContent = 'Session capturée — tu peux fermer le navigateur distant.';
-    loadWaveMonitor();
-  });
-
-  wmRemoteSocket.on('timeout', () => {
-    showToast('Navigateur distant fermé après 10 min d\'inactivité.', 'error');
-    stopWaveRemoteBrowser();
-  });
-
-  wmRemoteSocket.on('stopped', () => stopWaveRemoteBrowser());
-
-  wmRemoteSocket.on('error', (err) => {
-    showToast(err.message || 'Erreur navigateur distant', 'error');
-  });
-
-  const wrap = document.getElementById('wmRemoteWrap');
-  const img = document.getElementById('wmRemoteFrame');
-
-  // Convertit une position de clic/mouvement dans l'image affichée (taille
-  // CSS variable, ex: pleine largeur mobile) vers les coordonnées réelles de
-  // la page distante (WM_REMOTE_WIDTH × WM_REMOTE_HEIGHT).
-  function toRemoteCoords(evt) {
-    const rect = img.getBoundingClientRect();
-    const x = ((evt.clientX - rect.left) / rect.width) * WM_REMOTE_WIDTH;
-    const y = ((evt.clientY - rect.top) / rect.height) * WM_REMOTE_HEIGHT;
-    return { x: Math.round(x), y: Math.round(y) };
-  }
-
-  img.onmousemove = (e) => { if (wmRemoteSocket) wmRemoteSocket.emit('mouse_move', toRemoteCoords(e)); };
-  img.onmousedown = (e) => { e.preventDefault(); img.focus(); if (wmRemoteSocket) { wmRemoteSocket.emit('mouse_move', toRemoteCoords(e)); wmRemoteSocket.emit('mouse_down'); } };
-  img.onmouseup = (e) => { e.preventDefault(); if (wmRemoteSocket) wmRemoteSocket.emit('mouse_up'); };
-  img.onwheel = (e) => { e.preventDefault(); if (wmRemoteSocket) wmRemoteSocket.emit('wheel', { deltaX: e.deltaX, deltaY: e.deltaY }); };
-  img.tabIndex = 0; // rend l'image focusable pour recevoir les événements clavier
-  img.oncontextmenu = (e) => e.preventDefault();
-
-  img.onkeydown = (e) => {
-    e.preventDefault();
-    if (!wmRemoteSocket) return;
-    // Touches spéciales renommées vers ce qu'attend Playwright côté serveur
-    // (cf. WaveRemoteBrowserService.key) — les caractères imprimables (e.key
-    // d'un seul caractère : chiffres du PIN/OTP, lettres...) passent tels quels.
-    const map = { ' ': 'Space' };
-    const key = map[e.key] || e.key;
-    wmRemoteSocket.emit('key', { key });
-  };
-
-  wrap.style.display = '';
-}
-
-function confirmWaveRemoteLogin() {
-  if (wmRemoteSocket) wmRemoteSocket.emit('confirm_login');
-}
-
-function stopWaveRemoteBrowser() {
-  if (wmRemoteSocket) {
-    wmRemoteSocket.emit('stop');
-    wmRemoteSocket.disconnect();
-    wmRemoteSocket = null;
-  }
-  document.getElementById('wmRemoteHint').textContent = 'Navigateur distant arrêté.';
-  document.getElementById('wmRemoteFrame').src = '';
-  wmRemoteSetButtons('idle');
 }
 
 async function loadSmsConfig() {

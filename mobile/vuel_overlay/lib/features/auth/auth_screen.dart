@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/api/auth_api_client.dart';
+import '../../core/assets/game_logos.dart';
 import '../../core/state/session.dart';
 import '../../core/theme/vuel_theme.dart';
 
@@ -122,7 +123,10 @@ class _AuthScreenState extends State<AuthScreen> {
                   Center(
                     child: Column(
                       children: [
-                        const Icon(Icons.bolt, color: VuelColors.amber, size: 48),
+                        // Vrai logo Vuel (vuelMark : le "V" couronné seul, sans
+                        // texte — fond transparent, se découpe proprement à
+                        // cette taille) plutôt que l'icône générique Icons.bolt.
+                        Image.asset(GameLogos.vuelMark, width: 64, height: 64, fit: BoxFit.contain),
                         const SizedBox(height: 8),
                         const Text(
                           'Vuel',

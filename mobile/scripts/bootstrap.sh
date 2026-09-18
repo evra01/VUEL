@@ -85,4 +85,7 @@ awk -v addfile="$PLIST_ADD_FILE" '
 echo "→ flutter pub get"
 (cd "$APP_DIR" && flutter pub get)
 
+echo "→ Icône de l'app (remplace l'icône Flutter par défaut par le logo Vuel)"
+(cd "$APP_DIR" && dart run flutter_launcher_icons)
+
 echo "Terminé — projet prêt dans $APP_DIR"

@@ -29,11 +29,41 @@
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
+  html {
+    /* Empêche le rebond ("rubber-band") du navigateur qui révèle le fond de
+       la page derrière l'app — un des indices les plus flagrants qu'on est
+       dans un onglet et pas dans une app installée. */
+    overscroll-behavior-y: none;
+  }
   body {
     margin: 0; font-family: 'Inter', system-ui, sans-serif;
     background: #050505;
     background-image: radial-gradient(circle at 50% 0%, #1a1005 0%, #050505 60%);
     min-height: 100dvh; display: flex; justify-content: center; align-items: stretch;
+    overscroll-behavior-y: none;
+    /* Supprime le flash gris/bleu au toucher (tap highlight) et le menu
+       contextuel natif du navigateur (copier/rechercher/enregistrer l'image)
+       sur appui long — deux comportements de navigateur qu'aucune vraie app
+       n'a. touch-action: manipulation retire aussi le délai de ~300ms avant
+       qu'un tap ne déclenche son clic, perceptible comme de la lenteur. */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+  /* Les zones de texte réellement sélectionnables (tchat, saisies) restent
+     sélectionnables normalement — seule l'interface (boutons, onglets,
+     cartes) perd la sélection accidentelle au toucher prolongé. */
+  button, .navitem, .chip, .game-tile, .tab, .btn, .back-btn, .icon-btn, .pill,
+  .bottomnav, .topbar, .game-filter-pill, .avatar-opt {
+    -webkit-user-select: none; user-select: none;
+  }
+  /* Retour tactile immédiat au toucher (équivalent visuel du feedback
+     haptique natif) plutôt qu'un simple survol de souris — sans ça, les
+     boutons ne "répondent" qu'au clic final, comme sur un site. */
+  .btn:active, .chip:active, .game-tile:active, .navitem:active,
+  .game-filter-pill:active, .icon-btn:active, .back-btn:active,
+  .card-row:active, .avatar-opt:active {
+    transform: scale(0.96); transition: transform .08s ease;
   }
   h1, h2, h3, .headline { font-family: 'Space Grotesk', sans-serif; }
   .msr { font-family: 'Material Symbols Rounded'; font-weight: normal; font-style: normal; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; word-wrap: normal; direction: ltr; -webkit-font-smoothing: antialiased; }
@@ -49,8 +79,12 @@
     background: var(--bg); color: var(--text); overflow: hidden;
     min-height: 100dvh; flex: 1; display: flex; flex-direction: column; position: relative;
   }
-  .screen { flex: 1; overflow-y: auto; display: none; flex-direction: column; }
-  .screen.active { display: flex; }
+  .screen { flex: 1; overflow-y: auto; overscroll-behavior-y: contain; display: none; flex-direction: column; }
+  .screen.active { display: flex; animation: screenEnter .2s ease; }
+  /* Petite entrée en fondu/glissé plutôt qu'un cut instantané entre écrans —
+     un site classique change juste le contenu, une app anime la transition. */
+  @keyframes screenEnter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { .screen.active { animation: none; } }
 
   /* Sur grand écran (desktop/tablette) uniquement : un cadre soigné pour ne
      pas étaler le contenu sur toute la largeur — sans imiter un boîtier de
@@ -64,7 +98,7 @@
     .screen-wrap { min-height: 80vh; max-height: 860px; border-radius: 20px; }
   }
 
-  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 6px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: calc(16px + env(safe-area-inset-top)) 16px 6px; }
   .topbar .title { font-size: 18px; font-weight: 600; }
   .back-btn, .icon-btn {
     background: var(--surface-2); border: none; color: var(--text); width: 32px; height: 32px;
@@ -80,7 +114,7 @@
   /* Barre de nav flottante en pilule avec logo circulaire qui déborde sur la
      gauche — reprend VuelFloatingNavBar côté app (même géométrie : pilule de
      64px, logo de 52px décalé à gauche, item actif en pastille ambre). */
-  .bottomnav { position: relative; display: flex; padding: 0 16px 16px; background: transparent; border-top: none; }
+  .bottomnav { position: relative; display: flex; padding: 0 16px calc(16px + env(safe-area-inset-bottom)); background: transparent; border-top: none; }
   .navrow {
     flex: 1; display: flex; align-items: stretch; height: 64px; margin-left: 32px;
     padding: 0 14px 0 56px; background: var(--surface); border-radius: 32px;
@@ -190,8 +224,11 @@
   .toast.error { border-color: var(--red); }
 
   input, select {
+    /* 16px minimum : en dessous, iOS Safari zoome automatiquement toute la
+       page à la mise au focus d'un champ — LE signe le plus reconnaissable
+       d'un site web mal optimisé plutôt qu'une app. */
     width: 100%; background: var(--surface-2); border: 0.5px solid #333; color: var(--text);
-    border-radius: 10px; padding: 10px 12px; font-size: 13px; font-family: 'Inter', sans-serif; margin-bottom: 10px;
+    border-radius: 10px; padding: 10px 12px; font-size: 16px; font-family: 'Inter', sans-serif; margin-bottom: 10px;
   }
   label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 4px; }
 
@@ -404,7 +441,7 @@
 
     <!-- ============ ACCUEIL ============ -->
     <section class="screen" data-screen="home">
-      <div class="content" style="padding-top:12px;">
+      <div class="content" style="padding-top:calc(12px + env(safe-area-inset-top));">
         <div class="home-header">
           <div class="avatar" id="homeAvatar" style="width:48px;height:48px;font-size:19px;"></div>
           <div class="htexts">
@@ -470,11 +507,18 @@
         </div>
         <input type="number" id="customStakeInput" placeholder="Montant personnalisé (min. 200 F)" min="200" style="display:none; margin-top:8px;">
 
-        <label style="margin-top:16px;">Nom de ton équipe</label>
-        <input type="text" id="playerATeam" placeholder="Ex: Real Madrid">
-        <div class="muted" style="font-size:11px;margin-top:2px;">Utilisé par le bot pour analyser le résultat de fin de match</div>
+        <!-- Le nom d'équipe ne sert qu'au matching OCR du résultat eFootball
+             (cf. teamsMatch côté back-end) — inutile et donc masqué pour
+             CODM/Ludo, cf. toggleCreateTeamField() appelé par selectGame(). -->
+        <div id="createTeamWrapper" style="margin-top:16px;">
+          <label>Nom de ton équipe</label>
+          <input type="text" id="playerATeam" placeholder="Ex: Real Madrid">
+          <div class="muted" style="font-size:11px;margin-top:2px;">Utilisé par le bot pour analyser le résultat de fin de match</div>
+        </div>
 
         <button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="createDuel()" id="createDuelBtn">⚡ Créer un duel</button>
+
+        <div class="muted" style="text-align:center;margin-top:10px;cursor:pointer;" onclick="openJoinByCodeModal()">🔑 Rejoindre avec un code</div>
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:18px;">
           <div style="font-size:13px; font-weight:600;">Duels ouverts</div>
@@ -549,7 +593,14 @@
       <div class="topbar">
         <button class="back-btn" onclick="leaveDuelRoom()">←</button>
         <div class="title">Salon de duel</div>
-        <div style="width:32px;"></div>
+        <button class="icon-btn" id="roomShareBtn" style="display:none;" title="Partager le salon" onclick="shareDuelRoomInvite()">📤</button>
+      </div>
+
+      <!-- Visible tant que le salon attend un adversaire (même condition que
+           le bouton "Partager" ci-dessus) — miroir de la barre "Code du
+           salon" côté app mobile (duel_room_screen.dart). -->
+      <div class="duel-room-col" id="roomCodeBar" style="display:none;padding:10px 16px;background:var(--amber-dim);cursor:pointer;align-items:center;justify-content:center;gap:8px;" onclick="copyRoomCode()">
+        <span class="muted" style="font-size:13px;">Code du salon : </span><span style="color:var(--amber);font-size:16px;font-weight:700;letter-spacing:2px;" id="roomCodeValue">—</span><span style="color:var(--amber);">📋</span>
       </div>
 
       <div class="duel-room-col" style="padding: 4px 16px;">
@@ -698,6 +749,20 @@
         <div class="row">
           <button class="btn btn-ghost" onclick="closeModal('joinDuelModal')">Annuler</button>
           <button class="btn btn-primary" onclick="confirmJoinDuel()">Rejoindre</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rejoindre avec un code (lien /d/:code reçu d'un ami, ou code tapé/dicté
+         à la main) — miroir de PlayTab._joinByCode() côté app mobile. -->
+    <div class="modal-overlay" id="joinByCodeModal">
+      <div class="modal-sheet">
+        <h3>Rejoindre avec un code</h3>
+        <label>Code du salon</label>
+        <input type="text" id="joinCodeInput" placeholder="Ex: K7QX2M (reçu par lien ou message)" style="text-transform:uppercase;" onkeydown="if(event.key==='Enter') submitJoinByCode()">
+        <div class="row" style="margin-top:10px;">
+          <button class="btn btn-ghost" onclick="closeModal('joinByCodeModal')">Annuler</button>
+          <button class="btn btn-primary" onclick="submitJoinByCode()">Continuer</button>
         </div>
       </div>
     </div>
@@ -1131,7 +1196,15 @@ async function loadHomeBanners() {
 function selectGame(game) {
   state.selectedGame = game;
   document.querySelectorAll('#gameTiles .game-tile').forEach(t => t.classList.toggle('active', t.dataset.game === game));
+  toggleCreateTeamField();
 }
+// Le nom d'équipe ne sert qu'au matching OCR du résultat eFootball (cf.
+// teamsMatch / CreateDuelDto côté back-end, qui ignore ce champ hors
+// EFOOTBALL) — masqué pour CODM/Ludo plutôt que demandé pour rien.
+function toggleCreateTeamField() {
+  document.getElementById('createTeamWrapper').style.display = state.selectedGame === 'EFOOTBALL' ? 'block' : 'none';
+}
+toggleCreateTeamField();
 function selectStake(stake) {
   state.selectedStake = stake;
   document.querySelectorAll('#stakeChips .chip').forEach(c => c.classList.toggle('active', String(c.dataset.stake) === String(stake)));
@@ -1141,8 +1214,11 @@ const MIN_STAKE = 200; // FCFA — mise minimum, cf. CreateDuelDto côté back-e
 async function createDuel() {
   const btn = document.getElementById('createDuelBtn');
 
+  // Nom d'équipe requis uniquement pour eFootball — cf. CreateDuelDto côté
+  // back-end, qui ignore ce champ pour CODM/Ludo.
+  const isEfootball = state.selectedGame === 'EFOOTBALL';
   const playerATeam = document.getElementById('playerATeam').value.trim();
-  if (playerATeam.length < 2) {
+  if (isEfootball && playerATeam.length < 2) {
     showToast('Indique le nom de ton équipe (2 caractères minimum)', true);
     return;
   }
@@ -1157,7 +1233,9 @@ async function createDuel() {
 
   btn.disabled = true;
   try {
-    await api('/duels', { method: 'POST', body: { game: state.selectedGame, mode: '1v1', stakeAmount, playerATeam } });
+    const body = { game: state.selectedGame, mode: '1v1', stakeAmount };
+    if (isEfootball) body.playerATeam = playerATeam;
+    await api('/duels', { method: 'POST', body });
     showToast('Duel créé — en attente d\'un adversaire');
     document.getElementById('playerATeam').value = '';
     loadDuels();
@@ -1186,7 +1264,9 @@ async function loadDuels() {
     const duels = await duelsPromise;
     if (!duels.length) { list.innerHTML = '<div class="empty-state">Aucun duel ouvert — sois le premier à en créer un !</div>'; return; }
     list.innerHTML = '';
+    state.openDuelsById = {};
     duels.forEach(duel => {
+      state.openDuelsById[duel.id] = duel;
       const mine = state.profile && duel.playerAId === state.profile.id;
       const card = document.createElement('div');
       card.className = 'card card-row';
@@ -1204,16 +1284,25 @@ async function loadDuels() {
 }
 let pendingJoinDuelId = null;
 async function enterDuel(duelId, mine) {
-  if (mine) { openDuelRoom(duelId); return; }
-  // Le nom d'équipe est requis pour rejoindre (cf. JoinDuelDto côté back-end)
-  // — demandé via ce modal plutôt qu'inline, puisqu'on ne le connaît qu'au
-  // moment de rejoindre un duel précis.
+  const duel = (state.openDuelsById && state.openDuelsById[duelId]) || {};
+  if (mine) { openDuelRoom(duelId, duel.joinCode, duel.game, duel.stakeAmount); return; }
+  // Le nom d'équipe est requis uniquement pour rejoindre un duel EFOOTBALL
+  // (cf. JoinDuelDto côté back-end) — on rejoint directement pour CODM/Ludo,
+  // sans passer par ce modal, comme PlayTab._joinDuel() côté app mobile.
+  if (duel.game !== 'EFOOTBALL') {
+    try {
+      await api(`/duels/${duelId}/join`, { method: 'POST', body: {} });
+      openDuelRoom(duelId, duel.joinCode, duel.game, duel.stakeAmount);
+    } catch (e) { showToast(e.message, true); }
+    return;
+  }
   pendingJoinDuelId = duelId;
   document.getElementById('playerBTeam').value = '';
   openModal('joinDuelModal');
 }
 async function confirmJoinDuel() {
   const duelId = pendingJoinDuelId;
+  const duel = (state.openDuelsById && state.openDuelsById[duelId]) || {};
   const playerBTeam = document.getElementById('playerBTeam').value.trim();
   if (playerBTeam.length < 2) {
     showToast('Indique le nom de ton équipe (2 caractères minimum)', true);
@@ -1222,14 +1311,61 @@ async function confirmJoinDuel() {
   try {
     await api(`/duels/${duelId}/join`, { method: 'POST', body: { playerBTeam } });
     closeModal('joinDuelModal');
-    openDuelRoom(duelId);
+    openDuelRoom(duelId, duel.joinCode, duel.game, duel.stakeAmount);
   } catch (e) { showToast(e.message, true); }
+}
+
+// Rejoindre avec un code (lien /d/:code reçu d'un ami, ou code tapé/dicté à
+// la main) — miroir de PlayTab._joinByCode() côté app mobile : on récupère
+// d'abord le duel (accepte UUID ou joinCode, cf. DuelsService.resolveDuel)
+// pour connaître son jeu avant de décider si un nom d'équipe est requis.
+function openJoinByCodeModal() {
+  document.getElementById('joinCodeInput').value = '';
+  openModal('joinByCodeModal');
+}
+async function submitJoinByCode() {
+  const code = document.getElementById('joinCodeInput').value.trim();
+  if (!code) return;
+  try {
+    const duel = await api(`/duels/${encodeURIComponent(code)}`);
+    closeModal('joinByCodeModal');
+    state.openDuelsById = state.openDuelsById || {};
+    state.openDuelsById[duel.id] = duel;
+    const mine = state.profile && duel.playerAId === state.profile.id;
+    await enterDuel(duel.id, mine);
+  } catch (e) { showToast(e.message, true); }
+}
+
+// Copie/partage du code du salon — miroir de la barre "Code du salon" et du
+// bouton "Partager" de duel_room_screen.dart (share_plus côté app native ;
+// ici Web Share API si dispo, sinon copie presse-papiers).
+function copyRoomCode() {
+  const code = state.duelRoom.joinCode || state.duelRoom.duelId;
+  if (!code) return;
+  navigator.clipboard?.writeText(code).then(
+    () => showToast('Code copié : ' + code),
+    () => showToast('Code copié : ' + code)
+  );
+}
+function shareDuelRoomInvite() {
+  const code = state.duelRoom.joinCode || state.duelRoom.duelId;
+  if (!code) return;
+  const gameLabel = GAME_LABELS[state.duelRoom.game] || state.duelRoom.game || 'Vuel';
+  const stakeText = state.duelRoom.stakeAmount ? ` (mise ${fmt(state.duelRoom.stakeAmount)} F)` : '';
+  const link = `${apiBase()}/d/${code}`;
+  const message = `Rejoins mon duel ${gameLabel}${stakeText} sur Vuel 🎮⚡\n${link}`;
+  if (navigator.share) {
+    navigator.share({ title: 'Invitation à un duel Vuel', text: message }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(message);
+    showToast('Lien d\'invitation copié dans le presse-papiers');
+  }
 }
 
 // ============================================================
 // SALON DE DUEL (temps réel, socket.io — miroir de DuelRoomGateway)
 // ============================================================
-function openDuelRoom(duelId) {
+function openDuelRoom(duelId, joinCode, game, stakeAmount) {
   document.getElementById('chatArea').innerHTML = '';
   document.getElementById('captureStatusBanner').innerHTML = '';
   document.getElementById('roomOppName').textContent = 'En attente…';
@@ -1243,9 +1379,18 @@ function openDuelRoom(duelId) {
   renderAvatarEl(document.getElementById('roomMeAvatar'), state.profile.pseudo, state.profile.avatarId);
 
   state.duelRoom.duelId = duelId;
+  state.duelRoom.joinCode = joinCode || null;
+  state.duelRoom.game = game || null;
+  state.duelRoom.stakeAmount = stakeAmount || null;
   state.duelRoom.players = {};
   state.duelRoom.readyUserIds = [];
   state.duelRoom.historyLoaded = false;
+
+  // Code/partage affichés tant qu'on ne sait pas encore si un adversaire est
+  // déjà là — masqués dès qu'il apparaît, cf. renderDuelRoomPlayers().
+  document.getElementById('roomCodeValue').textContent = state.duelRoom.joinCode || duelId;
+  document.getElementById('roomCodeBar').style.display = 'flex';
+  document.getElementById('roomShareBtn').style.display = 'flex';
 
   const socket = io(apiBase() + '/duels', { auth: { token: getToken() }, transports: ['websocket'] });
   state.duelRoom.socket = socket;
@@ -1314,6 +1459,10 @@ function renderDuelRoomPlayers() {
     document.getElementById('roomOppGamingId').textContent = opp.gamingId ? 'ID : ' + opp.gamingId : '—';
     renderAvatarEl(document.getElementById('roomOppAvatar'), opp.pseudo, opp.avatarId);
     document.getElementById('roomOppReady').textContent = state.duelRoom.readyUserIds.includes(oppId) ? '✅' : '⏳';
+    // L'adversaire est là : plus besoin d'inviter, cf. même condition côté
+    // app mobile (_playerBId == null) pour l'icône Partager/le bandeau code.
+    document.getElementById('roomCodeBar').style.display = 'none';
+    document.getElementById('roomShareBtn').style.display = 'none';
   }
 }
 function markReady() {

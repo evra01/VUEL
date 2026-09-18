@@ -7,6 +7,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { DuelsModule } from '../duels/duels.module';
 import { TournamentsModule } from '../tournaments/tournaments.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
   // WalletModule : pour valider/rejeter un dépôt depuis le back-office avec la
@@ -22,6 +23,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     DuelsModule,
     TournamentsModule,
     NotificationsModule,
+    PaymentsModule, // PaymentConfigService — page "Wave Monitor" du back-office (voir plus bas)
   ],
   controllers: [AdminController, AdminProofsController],
   providers: [PrismaService],
