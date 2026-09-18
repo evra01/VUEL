@@ -4,6 +4,7 @@
   "description": "API back-end de Vuel - duels esport 1v1 avec mises financières",
   "scripts": {
     "build": "nest build",
+    "render-build": "node scripts/deploy.js",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -14,6 +15,7 @@
     "seed:admin": "ts-node prisma/seed-admin.ts"
   },
   "dependencies": {
+    "pg": "^8.13.0",
     "@nestjs/bullmq": "^10.1.0",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.2.0",
