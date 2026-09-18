@@ -133,6 +133,36 @@ export class AdminController {
     return { webhookSharedSecret: secret };
   }
 
+  // Reçoit une session Wave capturée par un script EXTERNE qui pilote un
+  // Chromium visible sur la machine de l'admin (cf. scripts/local-wave-login.js)
+  // — utile car Playwright/Chromium ne s'installe pas de façon fiable sur le
+  // plan gratuit Render (RAM/disque limités, cf. l'étape "playwright install"
+  // non-bloquante dans scripts/deploy.js). L'admin se connecte normalement
+  // dans SON navigateur local, le script capture juste les cookies et les
+  // envoie ici — équivalent distant de WaveRemoteBrowserService.captureNow(),
+  // mais sans faire tourner Chromium sur le serveur.
+  @Post('wave-monitor/capture-session')
+  async captureWaveSession(
+    @Body() body: { sessionId?: string; walletId?: string; cookies?: unknown },
+  ) {
+    if (!body.sessionId) {
+      throw new BadRequestException('sessionId manquant (cookie "sId" non trouvé par le script local).');
+    }
+    const expiresAt = new Date(Date.now() + 20 * 60 * 60 * 1000); // session Wave valide ~20h, comme WaveSessionService
+    await this.paymentConfig.get(); // crée la ligne "singleton" si besoin
+    await this.prisma.paymentConfig.update({
+      where: { id: 'singleton' },
+      data: {
+        waveSessionId: body.sessionId,
+        waveWalletId: body.walletId ?? null,
+        waveSessionExpiresAt: expiresAt,
+        waveLoginTokenId: null,
+        ...(body.cookies ? { waveRemoteCookiesRaw: body.cookies as object } : {}),
+      },
+    });
+    return { ok: true, expiresAt };
+  }
+
   // Liste des demandes de dépôt Wave (lien fixe + validation manuelle, cf.
   // WalletService.deposit) — même file d'attente que les boutons Telegram
   // "✅ Paiement reçu" / "❌ Rejeter" (cf. TelegramCommandsService), en

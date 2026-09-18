@@ -15,6 +15,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { TournamentsModule } from './tournaments/tournaments.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { BannersModule } from './banners/banners.module';
+import { WaveMonitorModule } from './wave-monitor/wave-monitor.module';
 import { PrismaService } from './common/prisma.service';
 import { AdminSeedService } from './common/admin-seed.service';
 
@@ -67,6 +68,7 @@ const bullModule = process.env.REDIS_HOST
     TournamentsModule,
     NotificationsModule,
     BannersModule,
+    WaveMonitorModule,
   ],
   providers: [PrismaService, AdminSeedService],
 })

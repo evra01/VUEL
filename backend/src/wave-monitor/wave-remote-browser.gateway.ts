@@ -1,148 +1,132 @@
 import {
-  ConnectedSocket,
-  MessageBody,
-  OnGatewayConnection,
-  OnGatewayDisconnect,
-  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
 } from '@nestjs/websockets';
+import { Server, Socket } from 'socket.io';
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { Server, Socket } from 'socket.io';
-import { WaveRemoteBrowserService, RemoteBrowserFrame } from './wave-remote-browser.service';
+import { WaveRemoteBrowserService } from './wave-remote-browser.service';
 
-/// Retransmet en direct au back-office (pwa/admin.html → écran "🌊 Wave
-/// Monitor" → connexion via navigateur distant) une vraie page Wave Business
-/// pilotée par un Chromium headless côté serveur (cf.
-/// WaveRemoteBrowserService), et relaie les clics/frappes de l'admin vers
-/// cette page. Réservé aux admins — mêmes identifiants sensibles en jeu que
-/// WaveMonitorAdminController (guard équivalent, ici fait à la main car les
-/// gateways WebSocket de Nest n'utilisent pas les guards HTTP classiques,
-/// comme DuelRoomGateway.handleConnection).
-@WebSocketGateway({ namespace: 'wave-remote', cors: { origin: '*' } })
+/// Salon admin-only qui pilote WaveRemoteBrowserService à distance : diffuse
+/// les frames JPEG (cf. events.on('frame')) au(x) client(s) connecté(s), et
+/// relaie les événements souris/clavier envoyés par le back-office vers la
+/// vraie page Wave (l'admin voit et contrôle un vrai Chromium headless comme
+/// s'il naviguait lui-même sur business.wave.com).
+///
+/// Un seul namespace, pas de "room" par admin : un seul navigateur distant
+/// tourne à la fois côté serveur (cf. WaveRemoteBrowserService.running), donc
+/// tous les clients connectés partagent le même flux — pratique si deux
+/// admins veulent superviser la même connexion.
+@WebSocketGateway({ namespace: 'wave-remote-browser', cors: { origin: '*' } })
 export class WaveRemoteBrowserGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
 
-  // Un seul admin pilote le navigateur distant à la fois (comme la session
-  // Wave elle-même, cf. PaymentConfig "singleton") — évite deux admins qui se
-  // marchent dessus sur les mêmes clics.
-  private controllerSocketId: string | null = null;
-  private frameListener?: (frame: RemoteBrowserFrame) => void;
-  private capturedListener?: (info: unknown) => void;
-  private timeoutListener?: () => void;
-  private closedListener?: () => void;
-
   constructor(
     private jwt: JwtService,
-    private browser: WaveRemoteBrowserService,
+    private remoteBrowser: WaveRemoteBrowserService,
   ) {}
 
-  handleConnection(client: Socket) {
+  // Auth via JWT dans le handshake (socket.io: auth: { token }), comme
+  // DuelRoomGateway — mais ADMIN uniquement ici : ce salon donne un contrôle
+  // direct du compte Wave Business, contrairement au salon de duel qui est
+  // ouvert à tout joueur authentifié.
+  async handleConnection(client: Socket) {
     try {
       const token = client.handshake.auth?.token as string | undefined;
       if (!token) throw new UnauthorizedException();
-      const payload = this.jwt.verify(token) as { role?: string };
+      const payload = this.jwt.verify(token) as { sub: string; role: string };
       if (payload.role !== 'ADMIN') throw new UnauthorizedException();
+      client.data.userId = payload.sub;
     } catch {
       client.disconnect();
+      return;
     }
+
+    // Abonnement aux évènements du navigateur distant pour CE client. Chaque
+    // connexion socket a ses propres listeners (nettoyés dans
+    // handleDisconnect) plutôt qu'un seul abonnement global, pour éviter les
+    // doublons d'écoute si plusieurs admins se connectent/déconnectent.
+    const onFrame = (frame: { data: string; width: number; height: number }) => client.emit('frame', frame);
+    const onClosed = () => client.emit('closed');
+    const onTimeout = () => client.emit('timeout');
+    const onCaptured = (info: { hasSId: boolean; walletId: string | null }) => client.emit('captured', info);
+
+    this.remoteBrowser.events.on('frame', onFrame);
+    this.remoteBrowser.events.on('closed', onClosed);
+    this.remoteBrowser.events.on('timeout', onTimeout);
+    this.remoteBrowser.events.on('captured', onCaptured);
+
+    client.data.cleanup = () => {
+      this.remoteBrowser.events.off('frame', onFrame);
+      this.remoteBrowser.events.off('closed', onClosed);
+      this.remoteBrowser.events.off('timeout', onTimeout);
+      this.remoteBrowser.events.off('captured', onCaptured);
+    };
+
+    client.emit('status', { running: this.remoteBrowser.running });
   }
 
   handleDisconnect(client: Socket) {
-    if (this.controllerSocketId !== client.id) return;
-    this.detachListeners();
-    this.controllerSocketId = null;
-    // Ferme le Chromium headless si l'admin quitte l'écran sans cliquer
-    // "Fermer" — évite un navigateur orphelin qui tourne en arrière-plan.
-    this.browser.stop().catch(() => {});
+    client.data.cleanup?.();
   }
 
   @SubscribeMessage('start')
   async start(@ConnectedSocket() client: Socket) {
-    if (this.controllerSocketId && this.controllerSocketId !== client.id) {
-      client.emit('error', { message: 'Un autre admin pilote déjà le navigateur distant.' });
-      return;
-    }
-    this.controllerSocketId = client.id;
-    this.attachListeners(client);
+    if (!client.data.userId) return;
     try {
-      await this.browser.start();
-      client.emit('started', {});
+      await this.remoteBrowser.start();
+      client.emit('status', { running: true });
     } catch (e) {
-      client.emit('error', {
-        message:
-          "Impossible de démarrer le navigateur distant (Playwright/Chromium absent du serveur ? cf. WAVE_MONITOR_CHANGES.md) : " +
-          String(e),
-      });
+      client.emit('error', { message: `Impossible de démarrer le navigateur distant : ${e}` });
     }
-  }
-
-  @SubscribeMessage('mouse_move')
-  onMouseMove(@ConnectedSocket() client: Socket, @MessageBody() data: { x: number; y: number }) {
-    if (this.controllerSocketId !== client.id) return;
-    void this.browser.mouseMove(data.x, data.y);
-  }
-
-  @SubscribeMessage('mouse_down')
-  onMouseDown(@ConnectedSocket() client: Socket) {
-    if (this.controllerSocketId !== client.id) return;
-    void this.browser.mouseDown();
-  }
-
-  @SubscribeMessage('mouse_up')
-  onMouseUp(@ConnectedSocket() client: Socket) {
-    if (this.controllerSocketId !== client.id) return;
-    void this.browser.mouseUp();
-  }
-
-  @SubscribeMessage('wheel')
-  onWheel(@ConnectedSocket() client: Socket, @MessageBody() data: { deltaX: number; deltaY: number }) {
-    if (this.controllerSocketId !== client.id) return;
-    void this.browser.wheel(data.deltaX, data.deltaY);
-  }
-
-  @SubscribeMessage('key')
-  onKey(@ConnectedSocket() client: Socket, @MessageBody() data: { key: string }) {
-    if (this.controllerSocketId !== client.id) return;
-    void this.browser.key(data.key);
-  }
-
-  // Bouton "J'ai terminé ma connexion" — filet de secours si la détection
-  // automatique (réponse GraphQL avec id de portefeuille, cf.
-  // WaveRemoteBrowserService.onResponse) ne se déclenche pas.
-  @SubscribeMessage('confirm_login')
-  async onConfirmLogin(@ConnectedSocket() client: Socket) {
-    if (this.controllerSocketId !== client.id) return;
-    const result = await this.browser.captureNow();
-    client.emit(result.ok ? 'captured' : 'error', result);
   }
 
   @SubscribeMessage('stop')
-  async onStop(@ConnectedSocket() client: Socket) {
-    if (this.controllerSocketId !== client.id) return;
-    this.detachListeners();
-    this.controllerSocketId = null;
-    await this.browser.stop();
-    client.emit('stopped', {});
+  async stop(@ConnectedSocket() client: Socket) {
+    if (!client.data.userId) return;
+    await this.remoteBrowser.stop();
+    client.emit('status', { running: false });
   }
 
-  private attachListeners(client: Socket) {
-    this.detachListeners();
-    this.frameListener = (frame) => client.emit('frame', frame);
-    this.capturedListener = (info) => client.emit('captured', { ok: true, ...(info as object) });
-    this.timeoutListener = () => client.emit('timeout', {});
-    this.closedListener = () => client.emit('stopped', {});
-    this.browser.events.on('frame', this.frameListener);
-    this.browser.events.on('captured', this.capturedListener);
-    this.browser.events.on('timeout', this.timeoutListener);
-    this.browser.events.on('closed', this.closedListener);
+  @SubscribeMessage('capture_now')
+  async captureNow(@ConnectedSocket() client: Socket) {
+    if (!client.data.userId) return;
+    const result = await this.remoteBrowser.captureNow();
+    client.emit('capture_result', result);
   }
 
-  private detachListeners() {
-    if (this.frameListener) this.browser.events.off('frame', this.frameListener);
-    if (this.capturedListener) this.browser.events.off('captured', this.capturedListener);
-    if (this.timeoutListener) this.browser.events.off('timeout', this.timeoutListener);
-    if (this.closedListener) this.browser.events.off('closed', this.closedListener);
+  @SubscribeMessage('mouse_move')
+  mouseMove(@ConnectedSocket() client: Socket, @MessageBody() data: { x: number; y: number }) {
+    if (!client.data.userId) return;
+    this.remoteBrowser.mouseMove(data.x, data.y);
+  }
+
+  @SubscribeMessage('mouse_down')
+  mouseDown(@ConnectedSocket() client: Socket) {
+    if (!client.data.userId) return;
+    this.remoteBrowser.mouseDown();
+  }
+
+  @SubscribeMessage('mouse_up')
+  mouseUp(@ConnectedSocket() client: Socket) {
+    if (!client.data.userId) return;
+    this.remoteBrowser.mouseUp();
+  }
+
+  @SubscribeMessage('wheel')
+  wheel(@ConnectedSocket() client: Socket, @MessageBody() data: { deltaX: number; deltaY: number }) {
+    if (!client.data.userId) return;
+    this.remoteBrowser.wheel(data.deltaX, data.deltaY);
+  }
+
+  @SubscribeMessage('key')
+  key(@ConnectedSocket() client: Socket, @MessageBody() data: { key: string }) {
+    if (!client.data.userId) return;
+    this.remoteBrowser.key(data.key);
   }
 }
