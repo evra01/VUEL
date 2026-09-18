@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { WalletModule } from './wallet/wallet.module';
@@ -47,6 +48,11 @@ const bullModule = process.env.REDIS_HOST
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Requis au runtime (pas seulement à la compilation) pour que le
+    // décorateur @Interval fonctionne (cf. wave-monitor.service.ts) — sans
+    // ce forRoot(), @Interval ne lève pas d'erreur mais ne se déclenche
+    // jamais.
+    ScheduleModule.forRoot(),
     ...bullModule,
     AuthModule,
     UsersModule,
