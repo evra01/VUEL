@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#0a0a0a">
 <link rel="icon" href="icons/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <style>
   :root {
     --bg: #0a0a0a; --surface: #141414; --surface-2: #1a1a1a;
@@ -336,6 +337,29 @@
       <div class="card" id="waveMonitorErrorCard" style="display:none;">
         <div class="title">Dernière erreur signalée par le monitor</div>
         <div class="meta" id="waveMonitorErrorText"></div>
+      </div>
+
+      <div class="page-title" style="margin-top:28px;">Connexion directe (navigateur distant)</div>
+      <div class="card">
+        <div class="hint" style="margin-bottom:10px;">
+          Alternative au script Python : un vrai navigateur (Chromium) tourne sur le serveur et affiche ici
+          la page de connexion Wave Business — connecte-toi exactement comme d'habitude (PIN + SMS gérés par
+          Wave), puis clique sur "J'ai terminé ma connexion" pour capturer la session. Ton PIN Wave ne
+          transite jamais par notre code.
+        </div>
+        <div id="remoteBrowserStatus" class="hint" style="margin-bottom:10px;">Non démarré.</div>
+
+        <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+          <button class="small amber" id="remoteBrowserStartBtn" onclick="startRemoteBrowser()">Démarrer</button>
+          <button class="small red" id="remoteBrowserStopBtn" onclick="stopRemoteBrowser()" style="display:none;">Arrêter</button>
+          <button class="small green" id="remoteBrowserCaptureBtn" onclick="captureRemoteBrowser()" style="display:none;">J'ai terminé ma connexion</button>
+        </div>
+
+        <div id="remoteBrowserViewport" style="display:none;">
+          <img id="remoteBrowserFrame" tabindex="0"
+               style="width:100%; max-width:900px; aspect-ratio:1366/768; background:#000; border-radius:10px; cursor:pointer; outline:none; display:block;">
+          <div class="hint" style="margin-top:8px;">Clique dans l'image puis tape/clique comme sur un écran normal — ça pilote directement la vraie page Wave.</div>
+        </div>
       </div>
 
       <div class="page-title" style="margin-top:28px;">Secret webhook</div>
@@ -1289,7 +1313,7 @@ async function loadWaveMonitor() {
         <div class="value">
           <span class="badge ${online ? 'green' : 'red'}">${online ? '🟢 En ligne' : '🔴 Hors ligne'}</span>
         </div>
-        <div class="meta" style="margin-top:6px;">${s.lastSeenAt ? 'Dernier signal ' + relativeTimeFr(s.lastSeenAt) : 'Aucun signal reçu pour l\\'instant'}</div>
+        <div class="meta" style="margin-top:6px;">${s.lastSeenAt ? 'Dernier signal ' + relativeTimeFr(s.lastSeenAt) : "Aucun signal reçu pour l'instant"}</div>
       </div>
       <div class="stat-card ${s.waveSessionActive ? '' : 'amber'}">
         <div class="label">Session Wave</div>
@@ -1310,7 +1334,7 @@ async function loadWaveMonitor() {
     }
 
     document.getElementById('waveMonitorSecretStatus').textContent =
-      s.configured ? '✓ Secret webhook configuré' : '⚠️ Aucun secret configuré — le monitor ne pourra pas s\\'authentifier.';
+      s.configured ? '✓ Secret webhook configuré' : "⚠️ Aucun secret configuré — le monitor ne pourra pas s'authentifier.";
   } catch (e) {
     grid.innerHTML = `<div class="stat-card red"><div class="label">Erreur</div><div class="value" style="font-size:14px;">${e.message}</div></div>`;
   }
@@ -1328,6 +1352,91 @@ async function generateWaveMonitorSecret() {
   } catch (e) {
     showToast(e.message, 'error');
   }
+}
+
+// ============================================================
+// NAVIGATEUR DISTANT WAVE (temps réel, socket.io — miroir de
+// WaveRemoteBrowserGateway). Diffuse les frames JPEG du Chromium headless
+// serveur et relaie souris/clavier vers la vraie page business.wave.com.
+// ============================================================
+let remoteBrowserSocket = null;
+const REMOTE_BROWSER_WIDTH = 1366;
+const REMOTE_BROWSER_HEIGHT = 768;
+
+function connectRemoteBrowser() {
+  if (remoteBrowserSocket) return;
+  remoteBrowserSocket = io(apiBase() + '/wave-remote-browser', { auth: { token: getToken() }, transports: ['websocket'] });
+
+  remoteBrowserSocket.on('status', (s) => setRemoteBrowserRunning(s.running));
+
+  remoteBrowserSocket.on('frame', (frame) => {
+    document.getElementById('remoteBrowserFrame').src = 'data:image/jpeg;base64,' + frame.data;
+  });
+
+  remoteBrowserSocket.on('captured', (info) => {
+    showToast(info.hasSId ? 'Session Wave capturée ✓' : 'Cookies enregistrés, mais pas de cookie "sId" trouvé — vérifie en base.', info.hasSId ? 'success' : 'error');
+    document.getElementById('remoteBrowserStatus').textContent = info.hasSId
+      ? '✓ Connecté — session capturée.'
+      : '⚠️ Cookies capturés mais aucun cookie "sId" identifié.';
+  });
+
+  remoteBrowserSocket.on('capture_result', (r) => {
+    if (!r.ok) showToast(r.message, 'error');
+  });
+
+  remoteBrowserSocket.on('closed', () => { setRemoteBrowserRunning(false); showToast('Navigateur distant fermé', 'error'); });
+  remoteBrowserSocket.on('timeout', () => { setRemoteBrowserRunning(false); showToast('Navigateur distant fermé (10 min sans connexion)', 'error'); });
+  remoteBrowserSocket.on('error', (e) => showToast(e.message, 'error'));
+
+  const img = document.getElementById('remoteBrowserFrame');
+
+  // Coordonnées relatives à l'image affichée (qui peut être redimensionnée
+  // en CSS, ex: max-width:900px) → converties vers la résolution réelle du
+  // Chromium headless (1366x768) avant d'être envoyées au serveur.
+  function toRemoteCoords(evt) {
+    const rect = img.getBoundingClientRect();
+    const x = ((evt.clientX - rect.left) / rect.width) * REMOTE_BROWSER_WIDTH;
+    const y = ((evt.clientY - rect.top) / rect.height) * REMOTE_BROWSER_HEIGHT;
+    return { x: Math.round(x), y: Math.round(y) };
+  }
+
+  img.addEventListener('mousemove', (e) => remoteBrowserSocket?.emit('mouse_move', toRemoteCoords(e)));
+  img.addEventListener('mousedown', (e) => { img.focus(); remoteBrowserSocket?.emit('mouse_move', toRemoteCoords(e)); remoteBrowserSocket?.emit('mouse_down'); });
+  img.addEventListener('mouseup', () => remoteBrowserSocket?.emit('mouse_up'));
+  img.addEventListener('wheel', (e) => { e.preventDefault(); remoteBrowserSocket?.emit('wheel', { deltaX: e.deltaX, deltaY: e.deltaY }); }, { passive: false });
+  img.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // Un seul caractère imprimable → envoyé tel quel (le serveur fait type()) ;
+  // les touches spéciales (Backspace, Enter, Tab, flèches...) envoyées par
+  // leur nom DOM (event.key), que Playwright comprend nativement.
+  img.addEventListener('keydown', (e) => {
+    e.preventDefault();
+    remoteBrowserSocket?.emit('key', { key: e.key.length === 1 ? e.key : e.key });
+  });
+}
+
+function setRemoteBrowserRunning(running) {
+  document.getElementById('remoteBrowserStartBtn').style.display = running ? 'none' : 'inline-block';
+  document.getElementById('remoteBrowserStopBtn').style.display = running ? 'inline-block' : 'none';
+  document.getElementById('remoteBrowserCaptureBtn').style.display = running ? 'inline-block' : 'none';
+  document.getElementById('remoteBrowserViewport').style.display = running ? 'block' : 'none';
+  document.getElementById('remoteBrowserStatus').textContent = running
+    ? 'En cours — connecte-toi dans l\'image ci-dessous.'
+    : 'Non démarré.';
+}
+
+function startRemoteBrowser() {
+  connectRemoteBrowser();
+  document.getElementById('remoteBrowserStatus').textContent = 'Démarrage du navigateur…';
+  remoteBrowserSocket.emit('start');
+}
+
+function stopRemoteBrowser() {
+  remoteBrowserSocket?.emit('stop');
+}
+
+function captureRemoteBrowser() {
+  remoteBrowserSocket?.emit('capture_now');
 }
 
 async function loadSmsConfig() {
