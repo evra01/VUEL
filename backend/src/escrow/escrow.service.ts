@@ -20,6 +20,10 @@ export class EscrowService {
 
   // Bloque la mise des deux joueurs dès le lancement du duel.
   async lock(duelId: string) {
+    // Idempotence : si l'escrow existe déjà, ne rien refaire (ni débit, ni create).
+    const existing = await this.prisma.escrow.findUnique({ where: { duelId } });
+    if (existing) return existing;
+
     const duel = await this.prisma.duel.findUniqueOrThrow({ where: { id: duelId } });
     const totalLocked = duel.stakeAmount * 2;
 

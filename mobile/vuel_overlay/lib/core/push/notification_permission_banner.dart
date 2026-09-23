@@ -26,8 +26,12 @@ class NotificationPermissionBanner extends StatefulWidget {
   State<NotificationPermissionBanner> createState() => _NotificationPermissionBannerState();
 }
 
-class _NotificationPermissionBannerState extends State<NotificationPermissionBanner> {
-  static const _dismissedKey = 'notif_banner_dismissed';
+class _NotificationPermissionBannerState extends State<NotificationPermissionBanner> with WidgetsBindingObserver {
+  // Timestamp (ms) du dernier « Plus tard / × ». Avant : un booléen définitif — un seul
+  // tap sur « × » masquait la bannière À VIE, sans autre endroit dans l'app pour
+  // activer les notifications. Désormais elle revient après quelques jours.
+  static const _dismissedAtKey = 'notif_banner_dismissed_at';
+  static const _dismissDuration = Duration(days: 3);
 
   bool _loading = true;
   bool _dismissed = false;
@@ -38,12 +42,32 @@ class _NotificationPermissionBannerState extends State<NotificationPermissionBan
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refresh();
   }
 
-  Future<void> _refresh() async {
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // Au retour des réglages du téléphone (ou d'un dialogue système), on relit l'état
+  // et, si la permission vient d'être accordée, on enregistre enfin le token FCM —
+  // sans ça, activer les notifications depuis les réglages ne servait à rien
+  // tant que l'app n'était pas complètement relancée.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh(registerIfGranted: true);
+  }
+
+  Future<void> _refresh({bool registerIfGranted = false}) async {
     final prefs = await SharedPreferences.getInstance();
-    final status = await PushService.currentStatus();
+    var status = await PushService.currentStatus();
+    if (registerIfGranted &&
+        (status == AuthorizationStatus.authorized || status == AuthorizationStatus.provisional)) {
+      status = await PushService.requestAndRegister(widget.pushClient);
+    }
     // PermissionStatus.permanentlyDenied ne concerne que le "vrai" runtime
     // permission Android (permission_handler) — FirebaseMessaging ne fait pas
     // cette distinction lui-même, d'où ce deuxième contrôle pour savoir si le
@@ -51,16 +75,18 @@ class _NotificationPermissionBannerState extends State<NotificationPermissionBan
     final permStatus = await Permission.notification.status;
     if (!mounted) return;
     setState(() {
-      _dismissed = prefs.getBool(_dismissedKey) ?? false;
+      final dismissedAt = prefs.getInt(_dismissedAtKey);
+      _dismissed = dismissedAt != null &&
+          DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(dismissedAt)) < _dismissDuration;
       _status = status;
-      _permanentlyDenied = permStatus.isPermanentlyDenied;
+      _permanentlyDenied = permStatus.isPermanentlyDenied && status == AuthorizationStatus.denied;
       _loading = false;
     });
   }
 
   Future<void> _dismiss() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_dismissedKey, true);
+    await prefs.setInt(_dismissedAtKey, DateTime.now().millisecondsSinceEpoch);
     if (mounted) setState(() => _dismissed = true);
   }
 
@@ -68,18 +94,22 @@ class _NotificationPermissionBannerState extends State<NotificationPermissionBan
     setState(() => _requesting = true);
     try {
       if (_permanentlyDenied) {
-        // Aucune app ne peut réafficher le dialogue système une fois qu'Android
-        // considère la permission "définitivement refusée" — seul le menu
-        // réglages du téléphone le permet.
         await openAppSettings();
-        // Pas de _refresh() immédiat ici : l'utilisateur part sur l'écran
-        // réglages, donc rien à re-vérifier avant qu'il ne revienne dans l'app
-        // (cf. WidgetsBindingObserver ci-dessous serait l'idéal, mais un
-        // simple retour manuel sur cet écran déclenche déjà un rebuild via
-        // didChangeDependencies au prochain accès à l'onglet Accueil).
-      } else {
-        final status = await PushService.requestAndRegister(widget.pushClient);
-        if (mounted) setState(() => _status = status);
+        return;
+      }
+      final status = await PushService.requestAndRegister(widget.pushClient);
+      if (!mounted) return;
+      setState(() => _status = status);
+      // Le dialogue système n'a rien donné (refusé, ou Android ne le réaffiche plus
+      // et renvoie « denied » immédiatement) : au lieu de ne rien faire — le bouton
+      // semblait « mort » —, on ouvre directement les réglages de l'app.
+      if (status != AuthorizationStatus.authorized && status != AuthorizationStatus.provisional) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Autorise les notifications dans les réglages de Vuel.')),
+          );
+        }
+        await openAppSettings();
       }
     } finally {
       if (mounted) setState(() => _requesting = false);

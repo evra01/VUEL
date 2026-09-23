@@ -178,16 +178,32 @@ export class DuelsService {
     const duel = await this.prisma.duel.findUniqueOrThrow({ where: { id: duelId } });
     if (!duel.playerBId) throw new BadRequestException('En attente du second joueur');
 
+    // Déjà lancé (double clic / les deux joueurs ont cliqué / retry socket) : no-op idempotent.
+    if (duel.status !== 'OPEN') return duel;
+
+    // Prise atomique du lancement : un seul appel concurrent obtient count === 1,
+    // les autres sortent sans toucher à l'escrow (évite l'erreur d'unicité sur Escrow.duelId).
+    const claimed = await this.prisma.duel.updateMany({
+      where: { id: duelId, status: 'OPEN' },
+      data: { status: 'IN_PROGRESS' },
+    });
+    if (claimed.count === 0) {
+      return this.prisma.duel.findUniqueOrThrow({ where: { id: duelId } });
+    }
+
     // Un match de bracket de tournoi n'a pas d'escrow propre : la mise a déjà été
     // collectée à l'inscription au tournoi (cf. TournamentsService.join/finalize).
     if (!duel.tournamentId) {
-      await this.escrow.lock(duelId);
+      try {
+        await this.escrow.lock(duelId);
+      } catch (e) {
+        // Échec du verrouillage (ex: solde insuffisant) : on remet le duel en OPEN pour permettre un nouvel essai.
+        await this.prisma.duel.update({ where: { id: duelId }, data: { status: 'OPEN' } });
+        throw e;
+      }
     }
 
-    return this.prisma.duel.update({
-      where: { id: duelId },
-      data: { status: 'IN_PROGRESS' },
-    });
+    return this.prisma.duel.findUniqueOrThrow({ where: { id: duelId } });
   }
 
   async markAwaitingProof(duelId: string) {

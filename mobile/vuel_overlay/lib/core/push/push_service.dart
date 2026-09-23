@@ -114,7 +114,6 @@ class PushService {
 
   static Future<void> _ensureLocalNotificationsInitialized() async {
     if (_initialized) return;
-    _initialized = true;
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     await _localNotifications.initialize(const InitializationSettings(android: androidInit));
     // Doit correspondre à `default_notification_channel_id` déclaré dans
@@ -129,6 +128,7 @@ class PushService {
     await _localNotifications
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
+    _initialized = true; // seulement après succès : un échec ne bloque plus les tentatives suivantes
   }
 
   static void _showForegroundNotification(RemoteMessage message) {

@@ -161,8 +161,12 @@ export class DuelRoomGateway implements OnGatewayConnection, OnGatewayDisconnect
       return;
     }
 
-    const updated = await this.duelsService.start(data.duelId);
-    this.server.to(data.duelId).emit('duel_started', { duelId: data.duelId, status: updated.status });
+    try {
+      const updated = await this.duelsService.start(data.duelId);
+      this.server.to(data.duelId).emit('duel_started', { duelId: data.duelId, status: updated.status });
+    } catch (e: any) {
+      client.emit('error', { message: e?.message ?? 'Impossible de lancer le duel.' });
+    }
   }
 
   @SubscribeMessage('chat_message')
