@@ -64,8 +64,8 @@ class _HomeShellState extends State<HomeShell> {
     _bannersClient = BannersApiClient(baseUrl: baseUrl, getAccessToken: getToken, onUnauthorized: onUnauthorized);
     _pushClient = PushApiClient(baseUrl: baseUrl, getAccessToken: getToken, onUnauthorized: onUnauthorized);
     // Fire-and-forget : ne doit jamais retarder l'affichage de l'écran
-    // d'accueil (cf. PushService.register, entièrement best-effort en interne).
-    PushService.register(_pushClient);
+    // d'accueil (cf. PushService.requestAndRegister, entièrement best-effort en interne).
+    PushService.requestAndRegister(_pushClient);
   }
 
   void _goTo(int index) => setState(() => _index = index);
@@ -78,6 +78,7 @@ class _HomeShellState extends State<HomeShell> {
         walletClient: _walletClient,
         duelsClient: _duelsClient,
         bannersClient: _bannersClient,
+        pushClient: _pushClient,
         onSeeDuels: () => _goTo(1),
         onSeeTournaments: () => _goTo(1),
         onLogout: () async {

@@ -29,18 +29,36 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 class PushService {
   static final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
+  static bool _listenersAttached = false;
 
-  /// À appeler une fois après connexion (cf. HomeShell.initState) — jamais
-  /// bloquant pour le reste de l'app : toute erreur (permission refusée, pas
-  /// de Google Play Services sur l'appareil, etc.) est avalée après avoir
-  /// laissé l'app fonctionner normalement sans push, exactement comme
-  /// `subscribeToPushIfPossible()` côté PWA.
-  static Future<void> register(PushApiClient pushClient) async {
+  /// Statut courant SANS déclencher de dialogue système — utilisé par
+  /// NotificationPermissionBanner pour décider s'il doit s'afficher, sans
+  /// re-solliciter l'utilisateur juste pour vérifier où il en est.
+  static Future<AuthorizationStatus> currentStatus() async {
+    try {
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      return settings.authorizationStatus;
+    } catch (_) {
+      return AuthorizationStatus.notDetermined;
+    }
+  }
+
+  /// À appeler après connexion (cf. HomeShell.initState) ET depuis le bouton
+  /// de NotificationPermissionBanner (l'utilisateur peut retenter après avoir
+  /// refusé une première fois) — jamais bloquant pour le reste de l'app :
+  /// toute erreur (permission refusée, pas de Google Play Services sur
+  /// l'appareil, etc.) est avalée après avoir laissé l'app fonctionner
+  /// normalement sans push, exactement comme `subscribeToPushIfPossible()`
+  /// côté PWA. Idempotent : peut être rappelée plusieurs fois sans dupliquer
+  /// les listeners (cf. `_listenersAttached`).
+  static Future<AuthorizationStatus> requestAndRegister(PushApiClient pushClient) async {
     try {
       final messaging = FirebaseMessaging.instance;
       final settings = await messaging.requestPermission(alert: true, badge: true, sound: true);
       debugPrint('[Push] Permission demandée — statut : ${settings.authorizationStatus}');
-      if (settings.authorizationStatus == AuthorizationStatus.denied) return;
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        return settings.authorizationStatus;
+      }
 
       await _ensureLocalNotificationsInitialized();
 
@@ -52,26 +70,33 @@ class PushService {
               onError: (e) => debugPrint('[Push] Échec enregistrement token côté back-end : $e'),
             );
       }
-      // Le token FCM peut être régénéré par le SDK (rotation, réinstall) à
-      // tout moment pendant que l'app tourne — sans ce listener, l'appareil
-      // arrêterait silencieusement de recevoir des push jusqu'au prochain
-      // redémarrage complet de l'app.
-      messaging.onTokenRefresh.listen((newToken) {
-        pushClient.registerDevice(newToken).catchError((e) => debugPrint('[Push] Échec ré-enregistrement token : $e'));
-      });
 
-      // Foreground uniquement : Android/iOS n'affichent PAS nativement la
-      // notification système quand l'app est déjà au premier plan (à la
-      // différence du cas background/tué, géré nativement — voir le handler
-      // ci-dessus) — flutter_local_notifications comble cet écart pour un
-      // comportement uniforme, comme WhatsApp qui notifie même app ouverte
-      // sur un autre écran.
-      FirebaseMessaging.onMessage.listen(_showForegroundNotification);
+      if (!_listenersAttached) {
+        _listenersAttached = true;
+        // Le token FCM peut être régénéré par le SDK (rotation, réinstall) à
+        // tout moment pendant que l'app tourne — sans ce listener, l'appareil
+        // arrêterait silencieusement de recevoir des push jusqu'au prochain
+        // redémarrage complet de l'app.
+        messaging.onTokenRefresh.listen((newToken) {
+          pushClient.registerDevice(newToken).catchError((e) => debugPrint('[Push] Échec ré-enregistrement token : $e'));
+        });
+
+        // Foreground uniquement : Android/iOS n'affichent PAS nativement la
+        // notification système quand l'app est déjà au premier plan (à la
+        // différence du cas background/tué, géré nativement — voir le handler
+        // ci-dessus) — flutter_local_notifications comble cet écart pour un
+        // comportement uniforme, comme WhatsApp qui notifie même app ouverte
+        // sur un autre écran.
+        FirebaseMessaging.onMessage.listen(_showForegroundNotification);
+      }
+
+      return settings.authorizationStatus;
     } catch (e) {
       // Best-effort — voir commentaire de la méthode. Le debugPrint permet
       // quand même de diagnostiquer en dev (ex: `flutter run`, pas
       // `build apk`) sans jamais faire planter ou bloquer l'app pour l'utilisateur.
       debugPrint('[Push] Initialisation échouée — notifications désactivées pour cette session : $e');
+      return AuthorizationStatus.notDetermined;
     }
   }
 

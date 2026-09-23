@@ -4,6 +4,8 @@ import '../../../core/api/user_api_client.dart';
 import '../../../core/api/wallet_api_client.dart';
 import '../../../core/api/duels_api_client.dart';
 import '../../../core/api/banners_api_client.dart';
+import '../../../core/api/push_api_client.dart';
+import '../../../core/push/notification_permission_banner.dart';
 import '../../../core/assets/game_logos.dart';
 import '../../../core/theme/vuel_theme.dart';
 import '../../../core/widgets/player_avatar.dart';
@@ -16,6 +18,7 @@ class AccueilTab extends StatefulWidget {
   final WalletApiClient walletClient;
   final DuelsApiClient duelsClient;
   final BannersApiClient bannersClient;
+  final PushApiClient pushClient;
   final VoidCallback onSeeDuels;
   final VoidCallback onSeeTournaments;
   final Future<void> Function() onLogout;
@@ -26,6 +29,7 @@ class AccueilTab extends StatefulWidget {
     required this.walletClient,
     required this.duelsClient,
     required this.bannersClient,
+    required this.pushClient,
     required this.onSeeDuels,
     required this.onSeeTournaments,
     required this.onLogout,
@@ -115,6 +119,7 @@ class _AccueilTabState extends State<AccueilTab> {
         children: [
           _buildHeader(),
           const SizedBox(height: 18),
+          NotificationPermissionBanner(pushClient: widget.pushClient),
           if (_banners.isNotEmpty) ...[
             _BannerCarousel(banners: _banners, bannersClient: widget.bannersClient),
             const SizedBox(height: 18),
