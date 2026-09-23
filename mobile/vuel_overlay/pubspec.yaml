@@ -1,0 +1,55 @@
+name: vuel_mobile
+description: Module de détection device, permissions overlay et tutoriel par marque pour Vuel
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  device_info_plus: ^10.1.0
+  permission_handler: ^11.3.0
+  android_intent_plus: ^5.1.0
+  http: ^1.2.1
+  package_info_plus: ^8.0.0
+  socket_io_client: ^2.0.3+1
+  url_launcher: ^6.3.0
+  shared_preferences: ^2.2.2
+  share_plus: ^10.1.2
+  # Notifications push "comme WhatsApp" (reçues même app fermée) — cf.
+  # lib/core/push/push_service.dart et mobile/vuel_overlay/PUSH_SETUP.md pour
+  # la configuration Firebase requise (compte gratuit, géré par l'opérateur).
+  firebase_core: ^3.6.0
+  firebase_messaging: ^15.1.3
+  flutter_local_notifications: ^18.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logos/
+
+# Génère la vraie icône de l'app (launcher Android + icône iOS) à partir du
+# logo Vuel — sans ça, `flutter create` (cf. scripts/bootstrap.sh) laisse
+# l'icône par défaut de Flutter. Se lance avec :
+#   dart run flutter_launcher_icons
+# (ou automatiquement via bootstrap.sh, cf. l'étape ajoutée après `flutter pub get`).
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logos/vuel_mark.png"
+  # Fond noir de la marque (cf. --bg dans pwa/index.html) derrière le "V" à
+  # fond transparent — plutôt que le blanc par défaut du package.
+  background_color: "#0a0a0a"
+  adaptive_icon_background: "#0a0a0a"
+  adaptive_icon_foreground: "assets/logos/vuel_mark.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true

@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vuel — Administration</title>
+<meta name="theme-color" content="#0a0a0a">
+<link rel="icon" href="icons/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0a; --surface: #141414; --surface-2: #1a1a1a;
+    --amber: #f0a52a; --amber-dim: #2a1c08;
+    --text: #f2f2f0; --muted: #888780;
+    --green: #5dcaa5; --red: #e14b3c; --blue: #4b7be1;
+    --border: #232323;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+  h1, h2, h3, .headline { font-family: 'Space Grotesk', sans-serif; margin: 0; }
+  a { color: var(--amber); }
+
+  /* ---------- Écran de connexion ---------- */
+  #loginScreen {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .login-box { width: 100%; max-width: 360px; }
+  .login-box .logo { text-align: center; margin-bottom: 24px; }
+  .login-box .logo .badge {
+    display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px;
+    background: var(--amber-dim); border-radius: 16px; font-size: 26px; margin-bottom: 10px;
+  }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
+  input, select, textarea {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 11px 12px; font-size: 14px; font-family: inherit;
+  }
+  .password-field { position: relative; }
+  .password-field input { padding-right: 40px; }
+  .password-toggle {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    cursor: pointer; font-size: 15px; opacity: 0.6; user-select: none;
+  }
+  .password-toggle:hover { opacity: 1; }
+  button.primary {
+    width: 100%; margin-top: 20px; background: var(--amber); color: #201200; border: none;
+    border-radius: 10px; padding: 13px; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.5; cursor: default; }
+  .error-text { color: var(--red); font-size: 12px; margin-top: 10px; }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+  /* ---------- Layout dashboard ---------- */
+  #dashboard { display: none; min-height: 100vh; }
+  #dashboard.active { display: flex; }
+  .sidebar {
+    width: 220px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border);
+    padding: 20px 14px; display: flex; flex-direction: column;
+  }
+  .sidebar .brand { display: flex; align-items: center; gap: 8px; padding: 6px 8px 20px; font-weight: 700; font-size: 16px; }
+  .navlink {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; color: var(--muted);
+    cursor: pointer; font-size: 13px; margin-bottom: 2px;
+  }
+  .navlink:hover { background: var(--surface-2); }
+  .navlink.active { background: var(--amber-dim); color: var(--amber); font-weight: 600; }
+  .sidebar .spacer { flex: 1; }
+  .logout-link { color: var(--muted); font-size: 12px; cursor: pointer; padding: 10px 12px; }
+
+  .main { flex: 1; padding: 28px 32px; max-width: 1100px; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-title { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 28px; }
+  .stat-card { background: var(--surface); border-radius: 14px; padding: 18px; }
+  .stat-card .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+  .stat-card .value { font-size: 26px; font-weight: 700; }
+  .stat-card.amber .value { color: var(--amber); }
+  .stat-card.red .value { color: var(--red); }
+
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 14px; overflow: hidden; }
+  th, td { text-align: left; padding: 12px 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--surface-2); }
+  .badge.amber { background: var(--amber-dim); color: var(--amber); }
+  .badge.green { background: rgba(93,202,165,0.15); color: var(--green); }
+  .badge.red { background: rgba(225,75,60,0.15); color: var(--red); }
+  select.role-select { width: auto; padding: 6px 8px; font-size: 12px; }
+
+  .card { background: var(--surface); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+  .card .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+  .card .title { font-weight: 600; font-size: 14px; }
+  .card .meta { color: var(--muted); font-size: 12px; }
+  button.small {
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 12px; font-size: 12px; cursor: pointer;
+  }
+  button.small.amber { background: var(--amber); color: #201200; border: none; font-weight: 600; }
+  button.small.green { background: var(--green); color: #06231a; border: none; font-weight: 600; }
+  button.small.red { background: var(--red); color: #2b0906; border: none; font-weight: 600; }
+
+  .form-row { display: flex; gap: 12px; }
+  .form-row > div { flex: 1; }
+
+  .empty-state { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 0; }
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; background: var(--surface-2); border: 1px solid var(--border);
+    padding: 12px 18px; border-radius: 10px; font-size: 13px; display: none; z-index: 50;
+  }
+  .toast.show { display: block; }
+  .toast.error { border-color: var(--red); color: var(--red); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal { background: var(--surface); border-radius: 16px; padding: 24px; max-width: 560px; width: 100%; max-height: 85vh; overflow-y: auto; }
+  .modal h3 { margin-bottom: 14px; }
+  .modal .close-x { float: right; cursor: pointer; color: var(--muted); font-size: 18px; }
+  .proof-img { width: 100%; border-radius: 10px; margin: 6px 0; border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="logo">
+      <div class="badge">🛡️</div>
+      <h1>Vuel — Admin</h1>
+      <div class="hint">Réservé aux comptes ADMIN</div>
+    </div>
+    <label>Téléphone</label>
+    <input type="text" id="loginPhone" placeholder="+225...">
+    <label>Mot de passe</label>
+    <div class="password-field">
+      <input type="password" id="loginPassword">
+      <span class="password-toggle" onclick="togglePasswordVisibility('loginPassword', this)">👁️</span>
+    </div>
+    <button class="primary" id="loginBtn" onclick="doAdminLogin()">Se connecter</button>
+    <div id="loginError" class="error-text"></div>
+
+    <label style="margin-top:24px;">Adresse du serveur</label>
+    <input type="text" id="apiBaseInput" placeholder="https://vuel.onrender.com">
+    <div class="hint">Par défaut : le back-end Vuel sur Render.</div>
+  </div>
+</div>
+
+<div id="dashboard">
+  <div class="sidebar">
+    <div class="brand">🛡️ Vuel Admin</div>
+    <div class="navlink active" data-page="stats" onclick="showPage('stats')">📊 Vue d'ensemble</div>
+    <div class="navlink" data-page="users" onclick="showPage('users')">👥 Utilisateurs</div>
+    <div class="navlink" data-page="deposits" onclick="showPage('deposits')">💰 Dépôts</div>
+    <div class="navlink" data-page="withdrawals" onclick="showPage('withdrawals')">💸 Retraits</div>
+    <div class="navlink" data-page="duels" onclick="showPage('duels')">⚔️ Duels</div>
+    <div class="navlink" data-page="banners" onclick="showPage('banners')">🖼️ Bannières</div>
+    <div class="navlink" data-page="proofs" onclick="showPage('proofs')">📸 Preuves</div>
+    <div class="navlink" data-page="disputes" onclick="showPage('disputes')">⚖️ Litiges</div>
+    <div class="navlink" data-page="payment" onclick="showPage('payment')" style="display:flex;align-items:center;gap:8px;"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOEAAADhCAMAAAAJbSJIAAABIFBMVEUdyP8BAgL+/v70fyAAAAAAzP/qhT31fhsezP8dyv8ezv8e0P/6giH9hCH3gSD8/Pwas+Qcv/T8ewD09PQbu+4JO0sHMD0Se50Zq9oUhqvLy8sGKjXi4uIINEMbt+oVkLgNWXIqKiq6uroPZICEhITT09MXncjsex8pFgZvb28EHCTs7OwQbYsLS2AFIy0YpdIDFBoXFxecnZ2tra1PT0/edB1HJQqdUhV1PRAUCwO6YRleMQ2CRBHLahs5OTliYmKVlZUdHR1TKwvSbRwxGgcMUWepWRciEwYDDxNDQ0M1NjaHiIhqampSU1MnJydCIwltOQ9OudnYagCFYUSSp6TMkF+1moHqgiuioZPhhjlrtMm7l3Z7r7vaiUe+gFrVjFMvTAXiAAAKrElEQVR4nO2d+VsbNxPHfQxltV5sjLkN2OEyJJwBBzA4TSAkhLZJ0yZN7/f//y/e1a4Na2mkPaDVbB99f9zIPPvJSBppNJotFKysrKysrKysrKysrKysrKysrKysrKysrHAxx3UroVzHMf02jy3G3Mp0a649M9vcay7v7rT23YrLTL/V44m59c02CFqeW2HOfwPScSd3AqZiRMGDmVbhP2BIVpnfFegilE8XWN5HpFtvK/iGjK1cm5E5LQ3fgHG37pp+z8xyCm09Xwh5s5lXRGdlNgEgt+NcxfS7ZpI7H9NDI4hrlRwORg6YiC9AbLPcIbLJm8SAHHEnb2OR1fdSAHLEhXyNRcZmUgFyxP1c+f7KXEpAH/GgnqOh6Ewmn2XuEds5Goqp+2hACJu56aduK4MJfcRmXlwGKzSzAPqIrZwY0clmQp/waU48hpvRhHwk5qKbsvmMgD7ibi6M6K5lJ4SVPBjRfSoRilEa1UPIxVzDpD2FT/LkEHv4WkbMg9d3FiSW9aVaY/VQiLVt+w8Xn4ht93KwdKu0R98a4HmJ69mIwWA9eNg4FBvnYCA6wooN3pdCHUWeQ3HwcFE0In1/waYPBMKjAUwjYkR4NXhYKgqt58gPRCZuK2BxwFJ7GSEcYpeOhdZr5AmdfbHf3RHeYoTvBcIZ8u7ClabSYYeMTjWDicbHFi0O9Al3RMLDWgizHp1poBE+fC65lgL1qcZtS17824BlddRbHNfCqVRqPU+ckBVm5aXY7dHG4rbYHT/4D9flxRz5dRsrKFagyBoUX60uEJ9MWT3j7veOkLq7kJxFasIZ4ltEad0tEcTYGG6IE7q6UHAkT0HThvjuonKtO9K+vOh3u93+xQs1I1B3FxXFgYyPtHXSrXpVLq/aPTlTpi8Q311UsPf2Yc4uria8anmoqjfRP8UhibsL2VkEg+6815m4xxtATnR658iYJOEumONWXHTp4TsLYeny5vyi1/FEvFCe1+ldnG8JvyAQUXQKrbXrnXksD8ZpiRZ5UZ6o4nyBIX1LioTLxsdhZf8g6FzXddmMsrOAra6nBPTN2C+K/ycH04YRK4NTCYDlFQkRcRZw1p9QAk68Rdark2YJfSsN3wkO5sVJobKMrbtPpGlmYMDyKbb2Nnvc7W/hIzt1ELKZGMPcoe/pu8hcU/X67+i5C2GuBP9tol2Krajc+InoLjzv6kdFY5OJJ6wuJMnwPJgIoqPKEgpcvuf7/GowgXqhL0Sbmo3sV6RjJX9KjRxNs03dqnTr9G2/26l2ur2Tc9WijbdcNheqwUzkT6n3XiPpzkK7hTK5u3CkKFPwRnuTw24lh6EyyCAhm1bNI/uDhZa7+wiEBt2FFOy9R2wFiKye9QR/9M8tGCNU5gEBzPEpVWXktITGTmccXUr6mj+lSqcyGQmvDRFqcywAdguOxlmkItwztH+SdkYCYnM6Q0Yi/qdIEvI44KR4KpMV0ZC7iA+F3khnFhkJDbmLWMLio8wzRXOnM3G99PFkyl08+EgiOeG1mamG1f81wllDk2nl4F9ChKeGlt4PSDpMSWgqM0oK9/5zhIbcReb87ei7x2x/B81Mnc6MBNqy4X24fckzMeOOSU3tLh5kRIDD7cWlIMFt4/n7mJulxoJRzmZWI/pWO2qU7rV4rA3V7BoLt8nBtqSA21E+OYNIaN40F6oRs0eTAq6WJDXeazbU5k5nWD3D/gGKSzKgr211VMTg6Ywzne7qZPC+OKAO0eRhvlOXbxvoARUW5PpWFb0zmirspIsZwl0KLaKamKw//JHZw3w2nQbxPqUb05IiyLxrNkMxTUe9S9VX6Agn3DOcSOskvqmtnmW0Q9F8qrCTtKPq+6i6n5q/WcKSOQ14LS5lZK2jhOZzv5KNxftbB2o18MN888nQScbi3eUfrV5hhBSqSCRwGoNLXTF6hqWcEMj94ogxHfXuVkWMkMUbHFAg9DuqPvp2dzMmRhtYeoD5ccilX4YDbCQjLL1ECA3nfg3FVjSIcFtLSCjPNXRKSEjXDaNv+V1CQMzr07k7o/aLyTtpqfRaJqTgLkIpZ1Q4TDaTcsnrGhruIpSrCIUP7qwlkngdmOd+0SHkBYXQpWWCFdtQ4kVLfjpD6WYJXuojxTAslW4lQiruIpCDZZkApACUByLAPJXJtMBTg7Hk5ydpCOWtPh13wYVlvMF2GsINyu6igGc/J9tXDCXvL6BNaDLFbv8WsUC+Wg3J58MMoZkGv2eRZiqVaitQcxfYEX/CveFQUsjN5OkMIuQ2UEpCeRdM66olQniYdOsUClmZ0nIXMuGTdITIFpFUIRd5HMLLdIRigQzjpzOCKlKSftx5RQLCGUqEcrFLOE5HiCzbgBAhk4Nuj0Fo+nQmImTV9vBeSspdYISJA21qQkLuAkmufbi3IHUzH0kBh+JDPT4pdyEVh3qMVRupQi7YrTx4looQOewmcjoTCI1ipNo91ZAUMEKFXPDiUCmCiXKJyJCQjLvACR8YxaB0OsPdofR6Rfg+DaEc9OZ/ggwhetcEXqchRBw+JZeP3jsESOMQ0SxFCgkZofAbUbqMPUny8VqR0qJGQZhiqmngp1fUCX9ITrhKnRC9/5vmhBRPFiY0DtF7e9rUWUGIvy+Smksn8RdMmE6DJtQEf8B8+t5AioKX8CFpN/0OB6Tj8dFVWzG5v1BkexNal6J7i2LyI0S51u6AkMzeQnX3EhLuERV3EqBJZ3+oqryTLCtKka9PKoohf/FhaMQka1M0DbpIyVnwyVSVFxWbyI5vDcMfU8o3kc8tBi9ZjB+J36sAb+h0Uk0JrHivr/D25JIx1IXa4gJSyluIxD6mhxVMDN8zZquPJeqHP6SVqaCukhXTT5V9lFgn1dViB11YsSFWL438jNJMyiV+QCf6rsrlKRYHHv6KUAZtKE2dLyViTUoTivyG1jzD5ehqlaOIDTVgEZZpjUIuXV0QwKJSS2h8ja4JdSORv/GxcNOy9kpbVMFUUTqt9DUF+bfJIh306IO+MbWJNJS+IB0A/PB8Y6lRe7a0ui1/U260Kal0qHvd10nG67AGTw4PsUrzo81hmeonV8PPAPNXPXvz4vLFx3c4pIx39uaj33xr8G/E8i5HxEv0AFyeXHUmuDpXb89ji+3Am4t+1+PNy93ej7y+MJ1QNyL3Gk6vqnfFu6ue173QTymX/bI3LLzPq+yfkFuQjmrs009C3e6q11XWtS7CWU9qPv4z1UHIxT5PIbXXkeL5AwOed5CvCkx9oTsM2S9T+PcB+nhM/AL/7sXUV6qIY3/ggPwbD1giwqnqmwnjRBHHflUB+lbsyal95+qPQoz/5hBEZL+rAX3EC9ELbnXUny4pT/0xZppHFvttXENYLr8bQQTo6T5dUp76nZwRxz7rTOgPxd4o4aW6j3KNf6VnxHG9CcveyBdzoK/po4ER/yRmRPan3oQ+4UmEEN7pTegb8QsxI459iTFhudqNfr/lRDsKefPxT7SM6HTiCMvlj5C8k5LrpuxTXCf1HcbpHSFAJ7b51C+kumn8MBwZiPAxtrU/EGnZ8PPUeJz4umaocy+2+fhfxAi/fhOrv9u7y83mXnN2pr0d3/qb/5EiLLCxBHIrQyVpTWoYWllZWVlZWVlZWVlZWVlZWVlZWVlZWVn9g/o/UFz1PAKkfksAAAAASUVORK5CYII=" style="width:18px;height:18px;border-radius:4px;object-fit:cover;" alt="Wave">Paiement (Wave)</div>
+    <div class="navlink" data-page="wavemonitor" onclick="showPage('wavemonitor')">🌊 Wave Monitor</div>
+    <div class="navlink" data-page="sms" onclick="showPage('sms')">📱 SMS (Twilio)</div>
+    <div class="navlink" data-page="email" onclick="showPage('email')">✉️ Email (SMTP)</div>
+    <div class="spacer"></div>
+    <div class="logout-link" onclick="doLogout()">Se déconnecter</div>
+  </div>
+
+  <div class="main">
+    <div class="page active" id="page-stats">
+      <div class="page-title">Vue d'ensemble</div>
+      <div class="stat-grid" id="statsGrid">
+        <div class="stat-card"><div class="label">Chargement…</div></div>
+      </div>
+    </div>
+
+    <div class="page" id="page-users">
+      <div class="page-title">Utilisateurs</div>
+      <table>
+        <thead><tr><th>Pseudo</th><th>Téléphone</th><th>Rôle</th><th>Réputation</th><th>KYC</th><th>Inscrit le</th><th>Portefeuille</th></tr></thead>
+        <tbody id="usersTableBody">
+          <tr><td colspan="7" class="empty-state">Chargement…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="page" id="page-deposits">
+      <div class="page-title">Dépôts</div>
+      <div class="hint" style="margin-bottom:14px;">
+        Lien Wave fixe + validation manuelle : vérifie sur le compte Wave que le paiement est bien arrivé
+        (montant + numéro indiqué ci-dessous) avant d'approuver. "Approuver" crédite le solde du joueur.
+        Même file d'attente que les boutons ✅/❌ envoyés sur Telegram — pas de double-crédit si tu utilises
+        les deux canaux.
+      </div>
+      <div id="depositsList"><div class="empty-state">Chargement…</div></div>
+    </div>
+
+    <div class="page" id="page-withdrawals">
+      <div class="page-title">Retraits</div>
+      <div class="hint" style="margin-bottom:14px;">
+        Le montant est débité du solde disponible dès la demande. "Approuver" confirme que l'argent a été
+        envoyé au joueur sur Wave en dehors de l'app. "Refuser" recrédite le joueur.
+      </div>
+      <div id="withdrawalsList"><div class="empty-state">Chargement…</div></div>
+    </div>
+
+    <div class="page" id="page-duels">
+      <div class="page-title">Duels</div>
+      <div class="hint" style="margin-bottom:14px;">
+        Annuler un duel rembourse intégralement les deux joueurs (mise recréditée sur leur solde
+        disponible) sans commission — utile pour un salon resté coincé ou un abus signalé en dehors du
+        circuit litige normal. Un duel de tournoi ne peut pas être annulé isolément (mises mutualisées :
+        passe par l'annulation du tournoi entier). Un duel déjà terminé ou déjà annulé ne peut plus l'être.
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="margin:0;">Filtrer par statut</label>
+        <select id="duelsStatusFilter" onchange="loadDuels()" style="max-width:260px;">
+          <option value="">Tous les statuts</option>
+          <option value="OPEN">Ouvert (en attente)</option>
+          <option value="IN_PROGRESS">En cours</option>
+          <option value="AWAITING_PROOF">En attente de preuve</option>
+          <option value="DISPUTED">Litige</option>
+          <option value="COMPLETED">Terminé</option>
+          <option value="CANCELLED">Annulé</option>
+        </select>
+      </div>
+      <div id="duelsList"><div class="empty-state">Chargement…</div></div>
+    </div>
+
+    <div class="page" id="page-banners">
+      <div class="page-title">Bannières de l'accueil</div>
+      <div class="hint" style="margin-bottom:14px;">
+        Affichées en carrousel en haut de l'écran d'accueil de l'app. L'image est envoyée vers Telegram
+        (comme les preuves de score) et jamais stockée sur ce serveur — Telegram en reste la seule copie.
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="title" style="margin-bottom:10px;">Ajouter une bannière</div>
+        <input type="file" id="bannerFileInput" accept="image/*" style="margin-bottom:10px;width:100%;">
+        <input type="text" id="bannerLinkInput" placeholder="Lien au tap (optionnel) — https://…" style="margin-bottom:10px;width:100%;">
+        <button class="small amber" onclick="uploadBanner()" id="bannerUploadBtn">Envoyer</button>
+      </div>
+      <div id="bannersList"><div class="empty-state">Chargement…</div></div>
+    </div>
+
+    <div class="page" id="page-proofs">
+      <div class="page-title">Preuves de match</div>
+      <div class="hint" style="margin-bottom:14px;">
+        Chaque capture envoyée par un joueur, en attendant que le duel soit réglé — même chose que le canal
+        Telegram, en plus rapide : valide directement le vainqueur ici, les fonds sont crédités immédiatement.
+        L'OCR automatique tente déjà de trancher en arrière-plan ; utilise cette page quand tu préfères
+        valider toi-même sans attendre (ou sans admin Telegram sous la main).
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="title" style="margin-bottom:10px;">Débloquer un duel par code</div>
+        <div class="hint" style="margin-bottom:10px;">
+          Pour un duel dont la mise reste verrouillée SANS qu'aucune preuve n'ait été envoyée (abandon en
+          cours de match, etc.) — n'apparaît pas dans la liste ci-dessous, qui ne montre que les preuves reçues.
+        </div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="duelLookupInput" placeholder="Code du salon (ex: K7QX2M)" style="flex:1;">
+          <button class="small amber" onclick="lookupDuel()">Chercher</button>
+        </div>
+      </div>
+      <div id="proofsList"><div class="empty-state">Chargement…</div></div>
+    </div>
+
+    <div class="page" id="page-disputes">
+      <div class="page-title">Litiges en cours</div>
+      <div id="disputesList"><div class="empty-state">Chargement…</div></div>
+    </div>
+
+    <div class="page" id="page-payment">
+      <div class="page-title" style="display:flex;align-items:center;gap:10px;"><img src="data:image/png;base64,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" style="width:26px;height:26px;border-radius:6px;object-fit:cover;" alt="Wave">Configuration paiement (Wave)</div>
+      <div class="card">
+        <div class="hint" style="margin-bottom:10px;">
+          Lien Wave fixe utilisé pour tous les dépôts. Le joueur saisit le numéro avec lequel il va payer,
+          puis un admin valide manuellement le dépôt depuis Telegram une fois le paiement vérifié sur le
+          compte Wave (mêmes boutons ✅/❌ que l'arbitrage des duels).
+        </div>
+        <label>Lien de paiement Wave</label>
+        <input type="text" id="waveDepositLink" placeholder="https://pay.wave.com/m/M_xxx/c/ci/">
+
+        <button class="primary" style="margin-top:20px;" onclick="savePaymentConfig()">Enregistrer</button>
+      </div>
+
+      <div class="page-title" style="margin-top:28px;">Wave Checkout via API (inactif)</div>
+      <div class="card">
+        <div class="hint" style="margin-bottom:10px;">
+          Ancien mode (clé API Wave Business + webhook automatique) — non utilisé par les dépôts actuellement
+          (cf. lien fixe ci-dessus). Gardé au cas où on voudrait le réactiver plus tard.
+        </div>
+        <label>Clé API Wave</label>
+        <input type="text" id="waveApiKey" placeholder="Laisser vide pour ne pas changer">
+        <div class="hint" id="waveApiKeyStatus"></div>
+
+        <label>URL de base API Wave</label>
+        <input type="text" id="waveApiBaseUrl">
+
+        <div class="form-row">
+          <div>
+            <label>URL de succès</label>
+            <input type="text" id="successUrl">
+          </div>
+          <div>
+            <label>URL d'erreur</label>
+            <input type="text" id="errorUrl">
+          </div>
+        </div>
+
+        <label>Secret webhook partagé</label>
+        <input type="text" id="webhookSharedSecret" placeholder="Laisser vide pour ne pas changer">
+        <div class="hint" id="webhookSecretStatus"></div>
+
+        <button class="primary" style="margin-top:20px;" onclick="savePaymentConfig()">Enregistrer</button>
+      </div>
+    </div>
+
+    <div class="page" id="page-wavemonitor">
+      <div class="page-title">Wave Monitor</div>
+      <div class="hint" style="margin-bottom:14px;">
+        Statut du script externe <code>vuel_wave_monitor.py</code>, qui détecte automatiquement les paiements
+        Wave reçus et valide les dépôts en attente sans intervention manuelle. Tant qu'il tourne (terminal
+        ouvert ou déployé quelque part), tu n'as normalement plus besoin d'approuver les dépôts un par un
+        depuis la page "Dépôts".
+      </div>
+
+      <div class="stat-grid" id="waveMonitorGrid">
+        <div class="stat-card"><div class="label">Chargement…</div></div>
+      </div>
+
+      <div class="card" id="waveMonitorErrorCard" style="display:none;">
+        <div class="title">Dernière erreur signalée par le monitor</div>
+        <div class="meta" id="waveMonitorErrorText"></div>
+      </div>
+
+      <div class="page-title" style="margin-top:28px;">Connexion directe (navigateur distant)</div>
+      <div class="card">
+        <div class="hint" style="margin-bottom:10px;">
+          Alternative au script Python : un vrai navigateur (Chromium) tourne sur le serveur et affiche ici
+          la page de connexion Wave Business — connecte-toi exactement comme d'habitude (PIN + SMS gérés par
+          Wave), puis clique sur "J'ai terminé ma connexion" pour capturer la session. Ton PIN Wave ne
+          transite jamais par notre code.
+        </div>
+        <div id="remoteBrowserStatus" class="hint" style="margin-bottom:10px;">Non démarré.</div>
+
+        <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+          <button class="small amber" id="remoteBrowserStartBtn" onclick="startRemoteBrowser()">Démarrer</button>
+          <button class="small red" id="remoteBrowserStopBtn" onclick="stopRemoteBrowser()" style="display:none;">Arrêter</button>
+          <button class="small green" id="remoteBrowserCaptureBtn" onclick="captureRemoteBrowser()" style="display:none;">J'ai terminé ma connexion</button>
+        </div>
+
+        <div id="remoteBrowserViewport" style="display:none;">
+          <img id="remoteBrowserFrame" tabindex="0"
+               style="width:100%; max-width:900px; aspect-ratio:1366/768; background:#000; border-radius:10px; cursor:pointer; outline:none; display:block;">
+          <div class="hint" style="margin-top:8px;">Clique dans l'image puis tape/clique comme sur un écran normal — ça pilote directement la vraie page Wave.</div>
+        </div>
+      </div>
+
+      <div class="page-title" style="margin-top:28px;">Secret webhook</div>
+      <div class="card">
+        <div class="hint" style="margin-bottom:10px;">
+          Le monitor s'authentifie avec ce secret (header <code>X-Webhook-Secret</code>) — la même valeur doit
+          être renseignée dans la variable d'environnement <code>VUEL_WEBHOOK_SECRET</code> du script. Tu peux
+          aussi le régler manuellement depuis la page "Paiement (Wave)".
+        </div>
+        <div class="hint" id="waveMonitorSecretStatus"></div>
+        <button class="small amber" style="margin-top:12px;" onclick="generateWaveMonitorSecret()">Générer un nouveau secret</button>
+        <div id="waveMonitorSecretReveal" style="display:none; margin-top:14px;">
+          <label>Nouveau secret (affiché une seule fois — copie-le maintenant)</label>
+          <input type="text" id="waveMonitorSecretValue" readonly onclick="this.select()">
+          <div class="hint">⚠️ Générer un nouveau secret invalide l'ancien : mets à jour <code>VUEL_WEBHOOK_SECRET</code>
+            côté monitor et relance-le, sinon il ne pourra plus valider les dépôts.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-sms">
+      <div class="page-title">Configuration SMS (Twilio)</div>
+      <div class="card">
+        <div class="hint" style="margin-bottom:10px;">Tant que ces champs sont vides, les codes OTP s'affichent dans les logs du serveur (mode dev) au lieu d'être envoyés par SMS.</div>
+        <div class="hint" id="twilioStatus" style="margin-bottom:10px;"></div>
+        <label>Account SID</label>
+        <input type="text" id="twilioAccountSid" placeholder="Laisser vide pour ne pas changer">
+
+        <label>Auth Token</label>
+        <input type="text" id="twilioAuthToken" placeholder="Laisser vide pour ne pas changer">
+
+        <label>Numéro d'envoi</label>
+        <input type="text" id="twilioFromNumber" placeholder="+1...">
+
+        <button class="primary" style="margin-top:20px;" onclick="saveSmsConfig()">Enregistrer</button>
+      </div>
+    </div>
+
+    <div class="page" id="page-email">
+      <div class="page-title">Configuration Email (SMTP)</div>
+      <div class="card">
+        <div class="hint" style="margin-bottom:10px;">
+          Le code OTP d'inscription est envoyé par email <b>en plus</b> du SMS. L'adresse email est obligatoire à l'inscription :
+          si le SMS échoue (opérateur, numéro invalide…), l'email suffit à valider le compte. Tant que ces champs sont vides,
+          l'email est seulement écrit dans les logs du serveur (mode dev).
+        </div>
+        <div class="hint" id="smtpStatus" style="margin-bottom:10px;"></div>
+
+        <label>Serveur SMTP</label>
+        <input type="text" id="smtpHost" placeholder="smtp.gmail.com">
+
+        <label>Port</label>
+        <input type="number" id="smtpPort" placeholder="587">
+
+        <label>Chiffrement</label>
+        <select id="smtpSecure">
+          <option value="false">STARTTLS — port 587 (le plus courant)</option>
+          <option value="true">TLS implicite — port 465</option>
+        </select>
+
+        <label>Utilisateur SMTP</label>
+        <input type="text" id="smtpUser" placeholder="contact@vuel.app">
+
+        <label>Mot de passe SMTP</label>
+        <input type="password" id="smtpPassword" placeholder="Laisser vide pour ne pas changer">
+        <div class="hint">Avec Gmail, il faut un « mot de passe d'application » (le mot de passe du compte est refusé).</div>
+
+        <label>Adresse expéditeur</label>
+        <input type="email" id="fromEmail" placeholder="no-reply@vuel.app">
+        <div class="hint">Doit généralement correspondre à l'utilisateur SMTP, sinon les messages partent en spam.</div>
+
+        <label>Nom expéditeur</label>
+        <input type="text" id="fromName" placeholder="Vuel">
+
+        <button class="primary" style="margin-top:20px;" onclick="saveEmailConfig()">Enregistrer</button>
+
+        <div style="margin-top:24px;border-top:1px solid rgba(255,255,255,.08);padding-top:16px;">
+          <label>Envoyer un email de test à</label>
+          <input type="email" id="testEmailTo" placeholder="ton.adresse@exemple.com">
+          <button class="primary" style="margin-top:12px;" onclick="sendTestEmail()">Envoyer le test</button>
+          <div class="hint">Enregistre d'abord la configuration — le test utilise les valeurs déjà en base.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="disputeModalOverlay">
+  <div class="modal">
+    <span class="close-x" onclick="closeDisputeModal()">✕</span>
+    <h3>Dossier du litige</h3>
+    <div id="disputeModalBody">Chargement…</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="proofModalOverlay">
+  <div class="modal">
+    <span class="close-x" onclick="closeProofModal()">✕</span>
+    <h3>Valider ce match</h3>
+    <div id="proofModalBody">Chargement…</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="walletModalOverlay">
+  <div class="modal" style="max-width:380px;">
+    <span class="close-x" onclick="closeWalletModal()">✕</span>
+    <h3 id="walletModalTitle">Portefeuille</h3>
+    <label>Sens</label>
+    <select id="walletDirection">
+      <option value="CREDIT">Créditer (ajouter des fonds)</option>
+      <option value="DEBIT">Débiter (retirer des fonds)</option>
+    </select>
+    <label>Montant (F CFA)</label>
+    <input type="number" id="walletAmount" min="1" placeholder="ex: 5000">
+    <div class="hint">Cette opération est tracée comme une transaction (visible dans l'historique du joueur), avec la mention "admin" comme origine.</div>
+    <button class="primary" onclick="submitWalletAdjustment()">Valider</button>
+  </div>
+</div>
+
+<script>
+function apiBase() { return localStorage.getItem('vuel_admin_api_base') || 'https://vuel.onrender.com'; }
+function getToken() { return localStorage.getItem('vuel_admin_token'); }
+
+function togglePasswordVisibility(inputId, iconEl) {
+  const input = document.getElementById(inputId);
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  iconEl.textContent = showing ? '👁️' : '🙈';
+}
+
+function showToast(message, type) {
+  const t = document.getElementById('toast');
+  t.textContent = message;
+  t.className = 'toast show' + (type ? ' ' + type : '');
+  setTimeout(() => { t.className = 'toast'; }, 3500);
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(apiBase() + path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + getToken(),
+      ...(options.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    let message = 'Erreur ' + res.status;
+    try { const body = await res.json(); if (body.message) message = Array.isArray(body.message) ? body.message.join(', ') : body.message; } catch (_) {}
+    throw new Error(message);
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+document.getElementById('apiBaseInput').value = apiBase();
+document.getElementById('apiBaseInput').addEventListener('change', (e) => {
+  localStorage.setItem('vuel_admin_api_base', e.target.value.trim().replace(/\/$/, ''));
+});
+
+async function doAdminLogin() {
+  const phone = document.getElementById('loginPhone').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  const errorEl = document.getElementById('loginError');
+  errorEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Connexion…';
+  try {
+    const res = await fetch(apiBase() + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || 'Identifiants invalides');
+    }
+    const data = await res.json();
+    localStorage.setItem('vuel_admin_token', data.accessToken);
+
+    const me = await api('/users/me');
+    if (me.role !== 'ADMIN') {
+      localStorage.removeItem('vuel_admin_token');
+      throw new Error('Ce compte n\'a pas le rôle ADMIN.');
+    }
+
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('dashboard').classList.add('active');
+    loadStats();
+  } catch (e) {
+    errorEl.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Se connecter';
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('vuel_admin_token');
+  document.getElementById('dashboard').classList.remove('active');
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginPassword').value = '';
+}
+
+(async function tryAutoLogin() {
+  if (!getToken()) return;
+  try {
+    const me = await api('/users/me');
+    if (me.role === 'ADMIN') {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('dashboard').classList.add('active');
+      loadStats();
+    } else {
+      localStorage.removeItem('vuel_admin_token');
+    }
+  } catch (_) {
+    localStorage.removeItem('vuel_admin_token');
+  }
+})();
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.navlink').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelector('.navlink[data-page="' + name + '"]').classList.add('active');
+  if (name === 'stats') loadStats();
+  if (name === 'users') loadUsers();
+  if (name === 'deposits') loadDeposits();
+  if (name === 'withdrawals') loadWithdrawals();
+  if (name === 'duels') loadDuels();
+  if (name === 'disputes') loadDisputes();
+  if (name === 'proofs') loadProofs();
+  if (name === 'banners') loadBanners();
+  if (name === 'payment') loadPaymentConfig();
+  if (name === 'wavemonitor') loadWaveMonitor();
+  if (name === 'sms') loadSmsConfig();
+  if (name === 'email') loadEmailConfig();
+}
+
+async function loadStats() {
+  const grid = document.getElementById('statsGrid');
+  try {
+    const s = await api('/admin/stats');
+    grid.innerHTML = `
+      <div class="stat-card"><div class="label">Utilisateurs</div><div class="value">${s.totalUsers}</div></div>
+      <div class="stat-card amber"><div class="label">Duels ouverts</div><div class="value">${s.openDuels}</div></div>
+      <div class="stat-card red"><div class="label">Duels en litige</div><div class="value">${s.disputedDuels}</div></div>
+      <div class="stat-card amber"><div class="label">Montant verrouillé (F)</div><div class="value">${s.amountCurrentlyLocked}</div></div>
+      <div class="stat-card red"><div class="label">Retraits en attente</div><div class="value">${s.pendingWithdrawals}</div></div>
+      <div class="stat-card amber"><div class="label">Dépôts en attente</div><div class="value">${s.pendingDeposits}</div></div>
+    `;
+  } catch (e) {
+    grid.innerHTML = `<div class="stat-card"><div class="label" style="color:var(--red)">${e.message}</div></div>`;
+  }
+}
+
+async function loadUsers() {
+  const body = document.getElementById('usersTableBody');
+  try {
+    const users = await api('/admin/users');
+    if (users.length === 0) {
+      body.innerHTML = '<tr><td colspan="7" class="empty-state">Aucun utilisateur.</td></tr>';
+      return;
+    }
+    body.innerHTML = users.map(u => `
+      <tr>
+        <td>${u.pseudo}</td>
+        <td>${u.phone}</td>
+        <td>
+          <select class="role-select" onchange="changeRole('${u.id}', this.value)">
+            <option value="PLAYER" ${u.role === 'PLAYER' ? 'selected' : ''}>PLAYER</option>
+            <option value="ARBITER" ${u.role === 'ARBITER' ? 'selected' : ''}>ARBITER</option>
+            <option value="ADMIN" ${u.role === 'ADMIN' ? 'selected' : ''}>ADMIN</option>
+          </select>
+        </td>
+        <td>${u.reputationScore}</td>
+        <td>${u.kycStatus}</td>
+        <td>${new Date(u.createdAt).toLocaleDateString('fr-FR')}</td>
+        <td><button class="small amber" onclick="openWalletModal('${u.id}', '${u.pseudo.replace(/'/g, "\\'")}')">Créditer / Débiter</button></td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="7" class="empty-state" style="color:var(--red)">${e.message}</td></tr>`;
+  }
+}
+
+let _currentWalletUserId = null;
+
+function openWalletModal(userId, pseudo) {
+  _currentWalletUserId = userId;
+  document.getElementById('walletModalTitle').textContent = 'Portefeuille — ' + pseudo;
+  document.getElementById('walletAmount').value = '';
+  document.getElementById('walletDirection').value = 'CREDIT';
+  document.getElementById('walletModalOverlay').classList.add('show');
+}
+
+function closeWalletModal() {
+  document.getElementById('walletModalOverlay').classList.remove('show');
+  _currentWalletUserId = null;
+}
+
+async function submitWalletAdjustment() {
+  const amount = parseInt(document.getElementById('walletAmount').value, 10);
+  const direction = document.getElementById('walletDirection').value;
+  if (!amount || amount <= 0) { showToast('Montant invalide', 'error'); return; }
+
+  try {
+    await api('/admin/users/' + _currentWalletUserId + '/wallet-adjustment', {
+      method: 'POST',
+      body: JSON.stringify({ amount, direction }),
+    });
+    showToast(direction === 'CREDIT' ? 'Compte crédité' : 'Compte débité', 'success');
+    closeWalletModal();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function changeRole(userId, role) {
+  try {
+    await api('/admin/users/' + userId + '/role', { method: 'PATCH', body: JSON.stringify({ role }) });
+    showToast('Rôle mis à jour', 'success');
+  } catch (e) {
+    showToast(e.message, 'error');
+    loadUsers();
+  }
+}
+
+const DEPOSIT_STATUS_LABEL = { PENDING: 'En attente', SUCCESS: 'Crédité', FAILED: 'Rejeté' };
+
+async function loadDeposits() {
+  const list = document.getElementById('depositsList');
+  try {
+    const deposits = await api('/admin/deposits');
+    if (deposits.length === 0) {
+      list.innerHTML = '<div class="empty-state">Aucune demande de dépôt.</div>';
+      return;
+    }
+    list.innerHTML = deposits.map(d => `
+      <div class="card">
+        <div class="row">
+          <div>
+            <div class="title">${d.wallet.user.pseudo} — ${d.amount} F</div>
+            <div class="meta">Numéro utilisé pour payer : ${d.payerPhone || '—'}</div>
+            <div class="meta">Demandé le ${new Date(d.createdAt).toLocaleString('fr-FR')}</div>
+            <div class="meta">Statut : ${DEPOSIT_STATUS_LABEL[d.status] || d.status}</div>
+          </div>
+          ${d.status === 'PENDING' ? `
+            <div style="display:flex; gap:8px;">
+              <button class="small amber" onclick="approveDeposit('${d.id}')">✓ Paiement reçu — créditer</button>
+              <button class="small" onclick="rejectDeposit('${d.id}')">✕ Rejeter</button>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state" style="color:var(--red)">${e.message}</div>`;
+  }
+}
+
+async function approveDeposit(id) {
+  if (!confirm('Confirmer que le paiement est bien arrivé sur le compte Wave et créditer le joueur ?')) return;
+  try {
+    await api('/admin/deposits/' + id + '/approve', { method: 'POST' });
+    showToast('Dépôt crédité', 'success');
+    loadDeposits();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function rejectDeposit(id) {
+  if (!confirm('Rejeter cette demande de dépôt ?')) return;
+  try {
+    await api('/admin/deposits/' + id + '/reject', { method: 'POST' });
+    showToast('Dépôt rejeté', 'success');
+    loadDeposits();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// 4 statuts possibles pour un retrait (cf. withdrawal-status.util.ts côté
+// back-end — /admin/withdrawals/statuses renvoie ce même mapping, dupliqué
+// ici en dur pour un rendu instantané sans appel réseau supplémentaire).
+const WITHDRAWAL_STATUS_LABEL = { PENDING: 'En cours', SUCCESS: 'Effectué', CANCELLED: 'Annulé', OTHER: 'Autre' };
+const WITHDRAWAL_STATUS_CLASS = { PENDING: 'amber', SUCCESS: 'green', CANCELLED: 'red', OTHER: '' };
+
+async function loadWithdrawals() {
+  const list = document.getElementById('withdrawalsList');
+  try {
+    const withdrawals = await api('/admin/withdrawals');
+    if (withdrawals.length === 0) {
+      list.innerHTML = '<div class="empty-state">Aucune demande de retrait.</div>';
+      return;
+    }
+    list.innerHTML = withdrawals.map(w => `
+      <div class="card">
+        <div class="row">
+          <div>
+            <div class="title">${w.wallet.user.pseudo} — ${w.amount} F</div>
+            <div class="meta">Téléphone : ${w.wallet.user.phone} · Moyen : ${w.provider || '—'}</div>
+            <div class="meta">Demandé le ${new Date(w.createdAt).toLocaleString('fr-FR')}</div>
+            <div class="meta">Statut : <span class="badge ${WITHDRAWAL_STATUS_CLASS[w.status] || ''}">${WITHDRAWAL_STATUS_LABEL[w.status] || w.status}</span></div>
+            ${w.adminNote ? `<div class="meta">Note : ${w.adminNote}</div>` : ''}
+          </div>
+          ${w.status === 'PENDING' ? `
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="small amber" onclick="approveWithdrawal('${w.id}')">✓ Effectué</button>
+              <button class="small" onclick="rejectWithdrawal('${w.id}')">✕ Annulé (recréditer)</button>
+              <button class="small" onclick="markWithdrawalOther('${w.id}')">… Autre</button>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state" style="color:var(--red)">${e.message}</div>`;
+  }
+}
+
+const DUEL_STATUS_LABEL = {
+  OPEN: 'Ouvert', IN_PROGRESS: 'En cours', AWAITING_PROOF: 'En attente de preuve',
+  DISPUTED: 'Litige', COMPLETED: 'Terminé', CANCELLED: 'Annulé',
+};
+const DUEL_STATUS_CLASS = {
+  OPEN: 'amber', IN_PROGRESS: 'amber', AWAITING_PROOF: 'amber',
+  DISPUTED: 'red', COMPLETED: 'green', CANCELLED: '',
+};
+// Statuts pour lesquels l'annulation a un sens — un duel déjà réglé (COMPLETED)
+// ou déjà annulé (CANCELLED) est rejeté côté back-end (cf. DuelsService.adminCancel),
+// donc on masque directement le bouton plutôt que de laisser l'admin cliquer pour rien.
+const DUEL_CANCELLABLE_STATUSES = ['OPEN', 'IN_PROGRESS', 'AWAITING_PROOF', 'DISPUTED'];
+
+async function loadDuels() {
+  const list = document.getElementById('duelsList');
+  list.innerHTML = '<div class="empty-state">Chargement…</div>';
+  try {
+    const status = document.getElementById('duelsStatusFilter').value;
+    const duels = await api('/admin/duels' + (status ? '?status=' + status : ''));
+    if (duels.length === 0) {
+      list.innerHTML = '<div class="empty-state">Aucun duel pour ce filtre.</div>';
+      return;
+    }
+    list.innerHTML = duels.map(d => `
+      <div class="card">
+        <div class="row">
+          <div>
+            <div class="title">${d.playerA?.pseudo || '—'} vs ${d.playerB ? d.playerB.pseudo : '— (en attente d\'un adversaire)'}</div>
+            <div class="meta">${d.game} · ${d.mode} · Mise : ${d.stakeAmount} F ${d.tournamentId ? '· Match de tournoi' : ''}</div>
+            <div class="meta">Créé le ${new Date(d.createdAt).toLocaleString('fr-FR')}</div>
+            <div class="meta">Statut : <span class="badge ${DUEL_STATUS_CLASS[d.status] || ''}">${DUEL_STATUS_LABEL[d.status] || d.status}</span></div>
+          </div>
+          ${DUEL_CANCELLABLE_STATUSES.includes(d.status) && !d.tournamentId ? `
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="small" onclick="cancelDuel('${d.id}')">✕ Annuler (rembourser)</button>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state" style="color:var(--red)">${e.message}</div>`;
+  }
+}
+
+async function cancelDuel(id) {
+  // Action irréversible qui touche de l'argent réel (remboursement des deux
+  // joueurs) — confirmation obligatoire avant l'appel, contrairement aux
+  // actions de retrait/dépôt qui ont déjà leur propre statut PENDING comme
+  // filet de sécurité.
+  if (!confirm('Annuler ce duel ? Les deux joueurs seront intégralement remboursés si leur mise était engagée.')) {
+    return;
+  }
+  try {
+    await api(`/admin/duels/${id}/cancel`, { method: 'POST' });
+    showToast('Duel annulé et joueurs remboursés');
+    loadDuels();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function approveWithdrawal(id) {
+  try {
+    await api('/admin/withdrawals/' + id + '/approve', { method: 'POST' });
+    showToast('Retrait marqué "Effectué"', 'success');
+    loadWithdrawals();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function rejectWithdrawal(id) {
+  if (!confirm('Marquer ce retrait "Annulé" et recréditer le joueur ?')) return;
+  try {
+    await api('/admin/withdrawals/' + id + '/reject', { method: 'POST' });
+    showToast('Retrait annulé, joueur recrédité', 'success');
+    loadWithdrawals();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// Statut "Autre" : ne recrédite PAS automatiquement le solde (cas particulier
+// laissé à l'appréciation de l'admin — utiliser l'ajustement de solde à part
+// si un recrédit est nécessaire).
+async function markWithdrawalOther(id) {
+  const note = prompt('Marquer ce retrait "Autre" — précise pourquoi (optionnel) :') || '';
+  try {
+    await api('/admin/withdrawals/' + id + '/other', { method: 'POST', body: JSON.stringify({ note }) });
+    showToast('Retrait marqué "Autre"', 'success');
+    loadWithdrawals();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+let _currentDisputeId = null;
+
+async function loadDisputes() {
+  const list = document.getElementById('disputesList');
+  try {
+    const disputes = await api('/admin/disputes');
+    if (disputes.length === 0) {
+      list.innerHTML = '<div class="empty-state">Aucun litige en cours 🎉</div>';
+      return;
+    }
+    list.innerHTML = disputes.map(d => `
+      <div class="card">
+        <div class="row">
+          <div>
+            <div class="title">${d.duel.game} · ${d.duel.mode} — ${d.duel.stakeAmount} F</div>
+            <div class="meta">Motif : ${d.reason}</div>
+            <div class="meta">Statut : ${d.status}</div>
+          </div>
+          <button class="small amber" onclick="openDisputeModal('${d.id}')">Instruire</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state" style="color:var(--red)">${e.message}</div>`;
+  }
+}
+
+async function openDisputeModal(disputeId) {
+  _currentDisputeId = disputeId;
+  document.getElementById('disputeModalOverlay').classList.add('show');
+  const body = document.getElementById('disputeModalBody');
+  body.innerHTML = 'Chargement…';
+  try {
+    const d = await api('/admin/disputes/' + disputeId);
+    // La capture elle-même n'est jamais stockée côté serveur (ni base, ni S3) — elle
+    // n'existe QUE dans le chat Telegram du bot (cf. TelegramNotifierService), avec
+    // des boutons pour valider/refuser directement là-bas quand l'OCR n'a pas suffi.
+    const proofsHtml = (d.duel.proofs || []).map(p => `
+      <div class="meta">Preuve de ${p.userId === d.duel.playerA.id ? d.duel.playerA.pseudo : (d.duel.playerB ? d.duel.playerB.pseudo : '?')} :</div>
+      <div class="hint">📷 Capture envoyée sur Telegram${p.telegramMessageId ? ' (message #' + p.telegramMessageId + ')' : ''} — l'image n'est pas stockée sur ce serveur.</div>
+      <div class="hint">Score OCR détecté : ${p.ocrScoreDetected || 'non détecté'} (confiance ${p.ocrConfidence != null ? Math.round(p.ocrConfidence * 100) + '%' : '?'})</div>
+      <div class="hint">Équipes détectées : ${p.ocrTeamsDetected || 'non détecté'}</div>
+    `).join('') || '<div class="meta">Aucune preuve envoyée.</div>';
+
+    body.innerHTML = `
+      <div class="meta">${d.duel.game} · ${d.duel.mode} — ${d.duel.stakeAmount} F</div>
+      <div class="meta">Signalé par : ${d.reportedBy.pseudo}</div>
+      <div class="meta" style="margin-bottom:14px;">Motif : ${d.reason}</div>
+
+      <div class="form-row" style="margin-bottom:10px;">
+        <div><div class="meta">${d.duel.playerA.pseudo} (rép. ${d.duel.playerA.reputationScore})</div></div>
+        <div><div class="meta">${d.duel.playerB ? d.duel.playerB.pseudo + ' (rép. ' + d.duel.playerB.reputationScore + ')' : '—'}</div></div>
+      </div>
+
+      ${proofsHtml}
+
+      <label>Décision</label>
+      <select id="resolveWinner">
+        <option value="">— Choisir le gagnant —</option>
+        <option value="${d.duel.playerA.id}">${d.duel.playerA.pseudo} gagne</option>
+        ${d.duel.playerB ? `<option value="${d.duel.playerB.id}">${d.duel.playerB.pseudo} gagne</option>` : ''}
+        <option value="__void__">Annuler le match (rembourser les deux joueurs)</option>
+      </select>
+
+      <label>Sanctionner un joueur (optionnel)</label>
+      <select id="resolveSanction">
+        <option value="">Aucune sanction</option>
+        <option value="${d.duel.playerA.id}">${d.duel.playerA.pseudo}</option>
+        ${d.duel.playerB ? `<option value="${d.duel.playerB.id}">${d.duel.playerB.pseudo}</option>` : ''}
+      </select>
+
+      <label>Résolution (motif de la décision)</label>
+      <textarea id="resolveText" rows="3" placeholder="Ex: score confirmé par capture d'écran des deux joueurs"></textarea>
+
+      <button class="primary" onclick="submitResolveDispute()">Valider la décision</button>
+    `;
+  } catch (e) {
+    body.innerHTML = `<div style="color:var(--red)">${e.message}</div>`;
+  }
+}
+
+function closeDisputeModal() {
+  document.getElementById('disputeModalOverlay').classList.remove('show');
+  _currentDisputeId = null;
+}
+
+async function submitResolveDispute() {
+  const winnerValue = document.getElementById('resolveWinner').value;
+  const sanctionValue = document.getElementById('resolveSanction').value;
+  const resolution = document.getElementById('resolveText').value.trim();
+
+  if (!winnerValue) { showToast('Choisis une décision', 'error'); return; }
+  if (!resolution) { showToast('Le motif de résolution est requis', 'error'); return; }
+
+  const payload = { resolution };
+  if (winnerValue === '__void__') {
+    payload.voidMatch = true;
+  } else {
+    payload.winnerId = winnerValue;
+  }
+  if (sanctionValue) payload.sanctionUserId = sanctionValue;
+
+  try {
+    await api('/admin/disputes/' + _currentDisputeId + '/resolve', { method: 'POST', body: JSON.stringify(payload) });
+    showToast('Litige résolu', 'success');
+    closeDisputeModal();
+    loadDisputes();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function loadBanners() {
+  const list = document.getElementById('bannersList');
+  try {
+    const banners = await api('/admin/banners');
+    if (banners.length === 0) {
+      list.innerHTML = '<div class="empty-state">Aucune bannière pour le moment</div>';
+      return;
+    }
+    list.innerHTML = banners.map((b, i) => `
+      <div class="card">
+        <div class="row">
+          <div style="display:flex;gap:12px;align-items:center;">
+            <img class="banner-thumb" data-banner-id="${b.id}" alt="Bannière"
+                 style="width:90px;height:50px;object-fit:cover;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);">
+            <div>
+              <div class="title">${b.active ? '🟢 Active' : '⚪ Désactivée'}</div>
+              <div class="meta">${b.linkUrl ? b.linkUrl : 'Pas de lien'}</div>
+              <div class="meta">Ordre : ${b.order}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="small" onclick="moveBanner('${b.id}', ${i}, -1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+            <button class="small" onclick="moveBanner('${b.id}', ${i}, 1)" ${i === banners.length - 1 ? 'disabled' : ''}>↓</button>
+            <button class="small ${b.active ? '' : 'amber'}" onclick="toggleBannerActive('${b.id}', ${!b.active})">${b.active ? 'Désactiver' : 'Activer'}</button>
+            <button class="small red" onclick="deleteBanner('${b.id}')">Suppr.</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+    document.querySelectorAll('.banner-thumb').forEach(img => loadProofImageIntoGeneric(img, '/admin/banners/' + img.dataset.bannerId + '/image'));
+    window._bannersOrder = banners;
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state" style="color:var(--red)">${e.message}</div>`;
+  }
+}
+
+// Même logique que loadProofImageInto (auth requise, pas un <img src> direct)
+// mais réutilisable pour n'importe quel chemin d'image protégé — évite de
+// dupliquer le même fetch+blob pour les bannières.
+async function loadProofImageIntoGeneric(imgEl, path) {
+  try {
+    const res = await fetch(apiBase() + path, { headers: { 'Authorization': 'Bearer ' + getToken() } });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    imgEl.src = URL.createObjectURL(blob);
+  } catch (_) {}
+}
+
+async function uploadBanner() {
+  const fileInput = document.getElementById('bannerFileInput');
+  const linkInput = document.getElementById('bannerLinkInput');
+  const btn = document.getElementById('bannerUploadBtn');
+  if (!fileInput.files[0]) { showToast('Choisis une image d\'abord', 'error'); return; }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  if (linkInput.value.trim()) formData.append('linkUrl', linkInput.value.trim());
+
+  btn.disabled = true;
+  btn.textContent = 'Envoi…';
+  try {
+    // Pas de api() ici : FormData a besoin que le navigateur fixe lui-même le
+    // Content-Type (avec la boundary multipart) — api() force
+    // 'Content-Type: application/json', ce qui casserait l'upload.
+    const res = await fetch(apiBase() + '/admin/banners', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || ('Erreur ' + res.status));
+    }
+    fileInput.value = '';
+    linkInput.value = '';
+    showToast('Bannière envoyée', 'success');
+    loadBanners();
+  } catch (e) {
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Envoyer';
+  }
+}
+
+async function toggleBannerActive(id, active) {
+  try {
+    await api('/admin/banners/' + id, { method: 'PATCH', body: JSON.stringify({ active }) });
+    loadBanners();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function moveBanner(id, currentIndex, direction) {
+  const neighbor = window._bannersOrder[currentIndex + direction];
+  if (!neighbor) return;
+  const current = window._bannersOrder[currentIndex];
+  try {
+    // Échange simplement les valeurs "order" des deux voisins — pas besoin
+    // d'un endpoint de réordonnancement dédié.
+    await Promise.all([
+      api('/admin/banners/' + current.id, { method: 'PATCH', body: JSON.stringify({ order: neighbor.order }) }),
+      api('/admin/banners/' + neighbor.id, { method: 'PATCH', body: JSON.stringify({ order: current.order }) }),
+    ]);
+    loadBanners();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function deleteBanner(id) {
+  if (!confirm('Supprimer cette bannière ?')) return;
+  try {
+    await api('/admin/banners/' + id, { method: 'DELETE' });
+    showToast('Bannière supprimée', 'success');
+    loadBanners();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function lookupDuel() {
+  const input = document.getElementById('duelLookupInput');
+  const code = input.value.trim();
+  if (!code) return;
+  try {
+    const duel = await api('/admin/proofs/lookup/' + encodeURIComponent(code));
+    openManualSettleModal(duel);
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// Même boîte de dialogue que openProofModal (voir plus bas), mais sans photo
+// — utilisée quand le duel n'a jamais reçu de preuve (cf. lookupDuel).
+function openManualSettleModal(duel) {
+  document.getElementById('proofModalOverlay').classList.add('show');
+  const body = document.getElementById('proofModalBody');
+  body.innerHTML = `
+    <div class="meta">${duel.game} · ${duel.mode} — ${duel.stakeAmount} F</div>
+    <div class="meta" style="margin-bottom:14px;">Statut : ${duel.status}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button class="small green" style="padding:10px;" onclick="settleProof('${duel.id}', {winnerId:'${duel.playerA.id}'})">
+        ✅ ${duel.playerA.pseudo} gagne — créditer
+      </button>
+      ${duel.playerB ? `
+      <button class="small green" style="padding:10px;" onclick="settleProof('${duel.id}', {winnerId:'${duel.playerB.id}'})">
+        ✅ ${duel.playerB.pseudo} gagne — créditer
+      </button>` : ''}
+      <button class="small red" style="padding:10px;" onclick="settleProof('${duel.id}', {voidMatch:true})">
+        ❌ Annuler le match — rembourser les deux joueurs
+      </button>
+    </div>
+  `;
+}
+
+let _proofsCache = {};
+
+async function loadProofs() {
+  const list = document.getElementById('proofsList');
+  try {
+    const proofs = await api('/admin/proofs');
+    _proofsCache = Object.fromEntries(proofs.map(p => [p.id, p]));
+    if (proofs.length === 0) {
+      list.innerHTML = '<div class="empty-state">Aucune preuve en attente 🎉</div>';
+      return;
+    }
+    list.innerHTML = proofs.map(p => `
+      <div class="card">
+        <div class="row">
+          <div style="display:flex;gap:12px;align-items:center;">
+            <img class="proof-thumb" data-proof-id="${p.id}" alt="Capture"
+                 style="width:70px;height:70px;object-fit:cover;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);">
+            <div>
+              <div class="title">${p.duel.game} · ${p.duel.mode} — ${p.duel.stakeAmount} F</div>
+              <div class="meta">Envoyée par : ${p.user?.pseudo ?? '?'}</div>
+              <div class="meta">${p.duel.playerA.pseudo} vs ${p.duel.playerB ? p.duel.playerB.pseudo : '— (en attente d\'un adversaire)'}</div>
+              ${p.ocrScoreDetected ? `<div class="meta">OCR : ${p.ocrScoreDetected} (confiance ${p.ocrConfidence != null ? Math.round(p.ocrConfidence * 100) + '%' : '?'})</div>` : ''}
+            </div>
+          </div>
+          <button class="small amber" onclick="openProofModal('${p.id}')">Valider</button>
+        </div>
+      </div>
+    `).join('');
+    // Chargement des vignettes APRÈS insertion dans le DOM (l'API Telegram
+    // exige le header Authorization, donc pas possible via un simple <img
+    // src="..."> — cf. loadProofImageInto).
+    document.querySelectorAll('.proof-thumb').forEach(img => loadProofImageInto(img, img.dataset.proofId));
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state" style="color:var(--red)">${e.message}</div>`;
+  }
+}
+
+// Charge une image de preuve via fetch (avec le header Authorization requis)
+// plutôt qu'un <img src> classique, puis l'affecte comme URL locale (blob) —
+// l'API Telegram sous-jacente n'est jamais appelée directement par le
+// navigateur, uniquement via ce endpoint back-end qui relaie l'image (cf.
+// AdminProofsController.getImage). Échoue silencieusement (vignette grise)
+// plutôt que de casser toute la liste si une image précise est indisponible.
+async function loadProofImageInto(imgEl, proofId) {
+  try {
+    const res = await fetch(apiBase() + '/admin/proofs/' + proofId + '/image', {
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    imgEl.src = URL.createObjectURL(blob);
+  } catch (_) {
+    // image indisponible — la vignette reste grise, pas bloquant.
+  }
+}
+
+function openProofModal(proofId) {
+  const p = _proofsCache[proofId];
+  if (!p) return;
+  document.getElementById('proofModalOverlay').classList.add('show');
+  const body = document.getElementById('proofModalBody');
+  body.innerHTML = `
+    <img class="proof-img" data-proof-id="${p.id}" alt="Capture" style="min-height:180px;background:var(--surface-2);">
+    <div class="meta">${p.duel.game} · ${p.duel.mode} — ${p.duel.stakeAmount} F</div>
+    <div class="meta" style="margin-bottom:10px;">Envoyée par : ${p.user?.pseudo ?? '?'}</div>
+    ${p.ocrScoreDetected ? `<div class="hint">Score OCR détecté : ${p.ocrScoreDetected} (confiance ${p.ocrConfidence != null ? Math.round(p.ocrConfidence * 100) + '%' : '?'})</div>` : ''}
+    ${p.ocrTeamsDetected ? `<div class="hint" style="margin-bottom:14px;">Équipes détectées : ${p.ocrTeamsDetected}</div>` : '<div style="margin-bottom:14px;"></div>'}
+
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button class="small green" style="padding:10px;" onclick="settleProof('${p.duel.id}', {winnerId:'${p.duel.playerA.id}'})">
+        ✅ ${p.duel.playerA.pseudo} gagne — créditer
+      </button>
+      ${p.duel.playerB ? `
+      <button class="small green" style="padding:10px;" onclick="settleProof('${p.duel.id}', {winnerId:'${p.duel.playerB.id}'})">
+        ✅ ${p.duel.playerB.pseudo} gagne — créditer
+      </button>` : ''}
+      <button class="small red" style="padding:10px;" onclick="settleProof('${p.duel.id}', {voidMatch:true})">
+        ❌ Annuler le match — rembourser les deux joueurs
+      </button>
+    </div>
+  `;
+  loadProofImageInto(body.querySelector('.proof-img'), p.id);
+}
+
+function closeProofModal() {
+  document.getElementById('proofModalOverlay').classList.remove('show');
+}
+
+async function settleProof(duelId, payload) {
+  try {
+    await api('/admin/proofs/duel/' + duelId + '/settle', { method: 'POST', body: JSON.stringify(payload) });
+    showToast(payload.voidMatch ? 'Match annulé — joueurs remboursés' : 'Duel réglé — vainqueur crédité', 'success');
+    closeProofModal();
+    loadProofs();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function loadPaymentConfig() {
+  try {
+    const c = await api('/admin/payment-config');
+    document.getElementById('waveDepositLink').value = c.waveDepositLink || '';
+    document.getElementById('waveApiBaseUrl').value = c.waveApiBaseUrl || '';
+    document.getElementById('successUrl').value = c.successUrl || '';
+    document.getElementById('errorUrl').value = c.errorUrl || '';
+    document.getElementById('waveApiKeyStatus').textContent = c.waveApiKeyConfigured ? '✓ Clé déjà configurée (masquée)' : 'Aucune clé configurée';
+    document.getElementById('webhookSecretStatus').textContent = c.webhookSharedSecretConfigured ? '✓ Secret déjà configuré (masqué)' : 'Aucun secret configuré';
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function savePaymentConfig() {
+  const payload = {
+    waveDepositLink: document.getElementById('waveDepositLink').value.trim(),
+    waveApiBaseUrl: document.getElementById('waveApiBaseUrl').value.trim(),
+    successUrl: document.getElementById('successUrl').value.trim(),
+    errorUrl: document.getElementById('errorUrl').value.trim(),
+  };
+  const waveApiKey = document.getElementById('waveApiKey').value.trim();
+  const webhookSharedSecret = document.getElementById('webhookSharedSecret').value.trim();
+  if (waveApiKey) payload.waveApiKey = waveApiKey;
+  if (webhookSharedSecret) payload.webhookSharedSecret = webhookSharedSecret;
+
+  try {
+    await api('/admin/payment-config', { method: 'PATCH', body: JSON.stringify(payload) });
+    showToast('Configuration enregistrée', 'success');
+    document.getElementById('waveApiKey').value = '';
+    document.getElementById('webhookSharedSecret').value = '';
+    loadPaymentConfig();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+function relativeTimeFr(iso) {
+  if (!iso) return null;
+  const diffSec = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diffSec < 60) return `il y a ${diffSec}s`;
+  if (diffSec < 3600) return `il y a ${Math.round(diffSec / 60)} min`;
+  if (diffSec < 86400) return `il y a ${Math.round(diffSec / 3600)} h`;
+  return `il y a ${Math.round(diffSec / 86400)} j`;
+}
+
+async function loadWaveMonitor() {
+  const grid = document.getElementById('waveMonitorGrid');
+  try {
+    const s = await api('/admin/wave-monitor');
+
+    // Considéré "en ligne" si un heartbeat est arrivé il y a moins de 2 min
+    // (le monitor envoie toutes les 30s — au-delà, le script est probablement
+    // arrêté ou ne peut plus joindre le serveur).
+    const seenAgo = s.lastSeenAt ? (Date.now() - new Date(s.lastSeenAt).getTime()) / 1000 : null;
+    const online = seenAgo !== null && seenAgo < 120;
+
+    grid.innerHTML = `
+      <div class="stat-card ${online ? '' : 'red'}">
+        <div class="label">Monitor</div>
+        <div class="value">
+          <span class="badge ${online ? 'green' : 'red'}">${online ? '🟢 En ligne' : '🔴 Hors ligne'}</span>
+        </div>
+        <div class="meta" style="margin-top:6px;">${s.lastSeenAt ? 'Dernier signal ' + relativeTimeFr(s.lastSeenAt) : "Aucun signal reçu pour l'instant"}</div>
+      </div>
+      <div class="stat-card ${s.waveSessionActive ? '' : 'amber'}">
+        <div class="label">Session Wave</div>
+        <div class="value"><span class="badge ${s.waveSessionActive ? 'green' : 'amber'}">${s.waveSessionActive ? 'Active' : 'Inactive'}</span></div>
+        <div class="meta" style="margin-top:6px;">${s.waveExpiresAt ? 'Expire ' + relativeTimeFr(s.waveExpiresAt).replace('il y a', 'dans') : ''}</div>
+      </div>
+      <div class="stat-card"><div class="label">Validés (dernier cycle)</div><div class="value">${s.lastCycleValidated}</div></div>
+      <div class="stat-card"><div class="label">Validés au total</div><div class="value">${s.totalValidated}</div></div>
+      <div class="stat-card ${s.pendingDeposits > 0 ? 'amber' : ''}"><div class="label">Dépôts en attente</div><div class="value">${s.pendingDeposits}</div></div>
+    `;
+
+    const errorCard = document.getElementById('waveMonitorErrorCard');
+    if (s.lastError) {
+      errorCard.style.display = 'block';
+      document.getElementById('waveMonitorErrorText').textContent = s.lastError;
+    } else {
+      errorCard.style.display = 'none';
+    }
+
+    document.getElementById('waveMonitorSecretStatus').textContent =
+      s.configured ? '✓ Secret webhook configuré' : "⚠️ Aucun secret configuré — le monitor ne pourra pas s'authentifier.";
+  } catch (e) {
+    grid.innerHTML = `<div class="stat-card red"><div class="label">Erreur</div><div class="value" style="font-size:14px;">${e.message}</div></div>`;
+  }
+}
+
+async function generateWaveMonitorSecret() {
+  if (!confirm("Générer un nouveau secret invalide l'ancien : le monitor en cours d'exécution ne pourra plus valider de dépôts tant que VUEL_WEBHOOK_SECRET n'est pas mis à jour côté script. Continuer ?")) return;
+  try {
+    const res = await api('/admin/wave-monitor/generate-secret', { method: 'POST' });
+    document.getElementById('waveMonitorSecretReveal').style.display = 'block';
+    document.getElementById('waveMonitorSecretValue').value = res.webhookSharedSecret;
+    document.getElementById('waveMonitorSecretValue').select();
+    showToast('Nouveau secret généré — copie-le maintenant', 'success');
+    loadWaveMonitor();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ============================================================
+// NAVIGATEUR DISTANT WAVE (temps réel, socket.io — miroir de
+// WaveRemoteBrowserGateway). Diffuse les frames JPEG du Chromium headless
+// serveur et relaie souris/clavier vers la vraie page business.wave.com.
+// ============================================================
+let remoteBrowserSocket = null;
+const REMOTE_BROWSER_WIDTH = 1366;
+const REMOTE_BROWSER_HEIGHT = 768;
+
+function connectRemoteBrowser() {
+  if (remoteBrowserSocket) return;
+  remoteBrowserSocket = io(apiBase() + '/wave-remote-browser', { auth: { token: getToken() }, transports: ['websocket'] });
+
+  remoteBrowserSocket.on('status', (s) => setRemoteBrowserRunning(s.running));
+
+  remoteBrowserSocket.on('frame', (frame) => {
+    document.getElementById('remoteBrowserFrame').src = 'data:image/jpeg;base64,' + frame.data;
+  });
+
+  remoteBrowserSocket.on('captured', (info) => {
+    showToast(info.hasSId ? 'Session Wave capturée ✓' : 'Cookies enregistrés, mais pas de cookie "sId" trouvé — vérifie en base.', info.hasSId ? 'success' : 'error');
+    document.getElementById('remoteBrowserStatus').textContent = info.hasSId
+      ? '✓ Connecté — session capturée.'
+      : '⚠️ Cookies capturés mais aucun cookie "sId" identifié.';
+  });
+
+  remoteBrowserSocket.on('capture_result', (r) => {
+    if (!r.ok) showToast(r.message, 'error');
+  });
+
+  remoteBrowserSocket.on('closed', () => { setRemoteBrowserRunning(false); showToast('Navigateur distant fermé', 'error'); });
+  remoteBrowserSocket.on('timeout', () => { setRemoteBrowserRunning(false); showToast('Navigateur distant fermé (10 min sans connexion)', 'error'); });
+  remoteBrowserSocket.on('error', (e) => showToast(e.message, 'error'));
+
+  const img = document.getElementById('remoteBrowserFrame');
+
+  // Coordonnées relatives à l'image affichée (qui peut être redimensionnée
+  // en CSS, ex: max-width:900px) → converties vers la résolution réelle du
+  // Chromium headless (1366x768) avant d'être envoyées au serveur.
+  function toRemoteCoords(evt) {
+    const rect = img.getBoundingClientRect();
+    const x = ((evt.clientX - rect.left) / rect.width) * REMOTE_BROWSER_WIDTH;
+    const y = ((evt.clientY - rect.top) / rect.height) * REMOTE_BROWSER_HEIGHT;
+    return { x: Math.round(x), y: Math.round(y) };
+  }
+
+  img.addEventListener('mousemove', (e) => remoteBrowserSocket?.emit('mouse_move', toRemoteCoords(e)));
+  img.addEventListener('mousedown', (e) => { img.focus(); remoteBrowserSocket?.emit('mouse_move', toRemoteCoords(e)); remoteBrowserSocket?.emit('mouse_down'); });
+  img.addEventListener('mouseup', () => remoteBrowserSocket?.emit('mouse_up'));
+  img.addEventListener('wheel', (e) => { e.preventDefault(); remoteBrowserSocket?.emit('wheel', { deltaX: e.deltaX, deltaY: e.deltaY }); }, { passive: false });
+  img.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // Un seul caractère imprimable → envoyé tel quel (le serveur fait type()) ;
+  // les touches spéciales (Backspace, Enter, Tab, flèches...) envoyées par
+  // leur nom DOM (event.key), que Playwright comprend nativement.
+  img.addEventListener('keydown', (e) => {
+    e.preventDefault();
+    remoteBrowserSocket?.emit('key', { key: e.key.length === 1 ? e.key : e.key });
+  });
+}
+
+function setRemoteBrowserRunning(running) {
+  document.getElementById('remoteBrowserStartBtn').style.display = running ? 'none' : 'inline-block';
+  document.getElementById('remoteBrowserStopBtn').style.display = running ? 'inline-block' : 'none';
+  document.getElementById('remoteBrowserCaptureBtn').style.display = running ? 'inline-block' : 'none';
+  document.getElementById('remoteBrowserViewport').style.display = running ? 'block' : 'none';
+  document.getElementById('remoteBrowserStatus').textContent = running
+    ? 'En cours — connecte-toi dans l\'image ci-dessous.'
+    : 'Non démarré.';
+}
+
+function startRemoteBrowser() {
+  connectRemoteBrowser();
+  document.getElementById('remoteBrowserStatus').textContent = 'Démarrage du navigateur…';
+  remoteBrowserSocket.emit('start');
+}
+
+function stopRemoteBrowser() {
+  remoteBrowserSocket?.emit('stop');
+}
+
+function captureRemoteBrowser() {
+  remoteBrowserSocket?.emit('capture_now');
+}
+
+async function loadSmsConfig() {
+  try {
+    const c = await api('/admin/sms-config');
+    document.getElementById('twilioFromNumber').value = c.twilioFromNumber || '';
+    document.getElementById('twilioStatus').textContent = c.twilioConfigured
+      ? '✓ Twilio configuré — les SMS sont envoyés réellement'
+      : 'Non configuré — les codes OTP s\'affichent dans les logs du serveur';
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function loadEmailConfig() {
+  try {
+    const c = await api('/admin/email-config');
+    document.getElementById('smtpHost').value = c.smtpHost || '';
+    document.getElementById('smtpPort').value = c.smtpPort ?? 587;
+    document.getElementById('smtpSecure').value = c.smtpSecure ? 'true' : 'false';
+    document.getElementById('smtpUser').value = c.smtpUser || '';
+    document.getElementById('fromEmail').value = c.fromEmail || '';
+    document.getElementById('fromName').value = c.fromName || 'Vuel';
+    document.getElementById('smtpPassword').value = '';
+    document.getElementById('smtpPassword').placeholder = c.smtpPasswordSet
+      ? 'Déjà enregistré — laisser vide pour ne pas changer'
+      : 'Mot de passe SMTP';
+    document.getElementById('smtpStatus').textContent = c.smtpConfigured
+      ? '✓ SMTP configuré — les codes OTP sont aussi envoyés par email'
+      : 'Non configuré — les emails s\'affichent seulement dans les logs du serveur';
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function saveEmailConfig() {
+  const payload = {
+    smtpHost: document.getElementById('smtpHost').value.trim(),
+    smtpPort: Number(document.getElementById('smtpPort').value) || 587,
+    smtpSecure: document.getElementById('smtpSecure').value === 'true',
+    smtpUser: document.getElementById('smtpUser').value.trim(),
+    fromEmail: document.getElementById('fromEmail').value.trim(),
+    fromName: document.getElementById('fromName').value.trim() || 'Vuel',
+  };
+  // Le mot de passe n'est jamais relu depuis le serveur : on ne l'envoie que si
+  // l'admin en a saisi un nouveau, sinon on garderait la valeur en base.
+  const password = document.getElementById('smtpPassword').value;
+  if (password) payload.smtpPassword = password;
+
+  try {
+    await api('/admin/email-config', { method: 'PATCH', body: JSON.stringify(payload) });
+    showToast('Configuration email enregistrée', 'success');
+    loadEmailConfig();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function sendTestEmail() {
+  const to = document.getElementById('testEmailTo').value.trim();
+  if (!to) return showToast('Renseigne une adresse de test', 'error');
+  try {
+    const res = await api('/admin/email-config/test', { method: 'POST', body: JSON.stringify({ to }) });
+    showToast(res.message, res.sent ? 'success' : 'error');
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function saveSmsConfig() {
+  const payload = { twilioFromNumber: document.getElementById('twilioFromNumber').value.trim() };
+  const sid = document.getElementById('twilioAccountSid').value.trim();
+  const token = document.getElementById('twilioAuthToken').value.trim();
+  if (sid) payload.twilioAccountSid = sid;
+  if (token) payload.twilioAuthToken = token;
+
+  try {
+    await api('/admin/sms-config', { method: 'PATCH', body: JSON.stringify(payload) });
+    showToast('Configuration enregistrée', 'success');
+    document.getElementById('twilioAccountSid').value = '';
+    document.getElementById('twilioAuthToken').value = '';
+    loadSmsConfig();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+</script>
+</body>
+</html>

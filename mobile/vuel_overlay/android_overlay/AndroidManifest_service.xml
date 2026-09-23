@@ -1,0 +1,15 @@
+        <service
+            android:name=".OverlayBubbleService"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
+
+        <!-- Notifications push (FCM) : canal par défaut utilisé quand le
+             payload ne précise pas de canal explicite (cf. PushService côté
+             Dart) — sans ça, Android râle dans les logs (pas bloquant, mais
+             la notif peut apparaître sans son/vibration sur certains OEM). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="vuel_notifications" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />

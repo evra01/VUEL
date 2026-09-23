@@ -1,0 +1,18 @@
+
+dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Pour RoundedBitmapDrawableFactory (logo circulaire de la bulle flottante) :
+    implementation("androidx.core:core-ktx:1.13.1")
+    // Requis par flutter_local_notifications (notifications push en foreground,
+    // cf. lib/core/push/push_service.dart) — sans ça, le build échoue avec
+    // "Dependency ':flutter_local_notifications' requires core library
+    // desugaring to be enabled for :app." Voir compileOptions ci-dessous, qui
+    // active le flag correspondant côté android {}.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
+
+android {
+    compileOptions {
+        isCoreLibraryDesugaringEnabled = true
+    }
+}

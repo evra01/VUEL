@@ -1,0 +1,5 @@
+android/
+ios/
+build/
+.dart_tool/
+google-services.json
